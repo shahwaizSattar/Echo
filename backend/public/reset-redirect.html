@@ -1,0 +1,77 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Password Reset Redirect</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 24px; text-align:center; }
+    .card { max-width:480px; margin:40px auto; padding:20px; border-radius:8px; border:1px solid #eee; }
+    a.button { display:inline-block; background:#667eea; color:#fff; padding:12px 20px; border-radius:6px; text-decoration:none; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Password Reset</h1>
+    <p id="message">Preparing to open the app...</p>
+    <p id="fallback" style="display:none; margin-top:16px;">
+      If nothing happens, copy this code and open the app manually, or use the button below:
+    </p>
+    <p id="openButton" style="display:none; margin-top:16px;"></p>
+  </div>
+
+  <script>
+    (function(){
+      function getQueryParam(key) {
+        const params = new URLSearchParams(window.location.search);
+        return params.get(key) || params.get(key.toLowerCase());
+      }
+
+      const oobCode = getQueryParam('oobCode') || getQueryParam('oobcode');
+      const continueUrl = getQueryParam('continueUrl') || getQueryParam('continueurl') || window.location.origin + '/';
+
+      // Customize your app's scheme here (make sure it's configured in your app)
+      const APP_SCHEME = 'myapp'; // <-- change this to your app scheme, e.g. 'com.whisper.echo' or 'myapp'
+      const APP_PATH = 'reset-password'; // path that your app expects
+
+      const messageEl = document.getElementById('message');
+      const fallbackEl = document.getElementById('fallback');
+      const openButtonEl = document.getElementById('openButton');
+
+      if (!oobCode) {
+        messageEl.textContent = 'Reset code not found in the URL.';
+        fallbackEl.style.display = 'block';
+        openButtonEl.innerHTML = '<a class="button" href="' + continueUrl + '">Go back</a>';
+        openButtonEl.style.display = 'block';
+        return;
+      }
+
+      // Build deep link to open the app with the oobCode
+      const deepLink = `${APP_SCHEME}://${APP_PATH}?oobCode=${encodeURIComponent(oobCode)}`;
+
+      // Attempt to open the app by navigating to the deep link.
+      // On mobile browsers this will trigger the app if installed.
+      // After a short delay, show a fallback UI.
+      let opened = false;
+
+      function tryOpen() {
+        // For iOS Safari and most mobile browsers, setting window.location is sufficient.
+        window.location = deepLink;
+        // Also create a clickable button in case automatic open fails
+        openButtonEl.innerHTML = '<a class="button" href="' + deepLink + '">Open App to Reset Password</a>';
+        openButtonEl.style.display = 'block';
+        fallbackEl.style.display = 'block';
+
+        // For some browsers, opening the custom scheme may fail silently. Show instructions.
+        setTimeout(function() {
+          if (!opened) {
+            messageEl.textContent = 'If your app did not open, tap the button below or copy the code and open the app manually.';
+          }
+        }, 1200);
+      }
+
+      tryOpen();
+    })();
+  </script>
+</body>
+</html>
