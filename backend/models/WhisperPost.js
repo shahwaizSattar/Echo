@@ -67,7 +67,7 @@ const whisperPostSchema = new mongoose.Schema({
     enum: ['Gaming', 'Education', 'Beauty', 'Fitness', 'Music', 'Technology', 
            'Art', 'Food', 'Travel', 'Sports', 'Movies', 'Books', 'Fashion',
            'Photography', 'Comedy', 'Science', 'Politics', 'Business', 'Vent', 
-           'Confession', 'Advice', 'Random']
+           'Confession', 'Advice', 'Random', 'Love']
   },
   reactions: {
     funny: { type: Number, default: 0 },

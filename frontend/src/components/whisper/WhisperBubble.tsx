@@ -19,17 +19,17 @@ interface WhisperBubbleProps {
   onPress: () => void;
 }
 
-// Sticky note colors
-const STICKY_COLORS = [
-  '#FFE5B4', // Peach
-  '#FFD1DC', // Pink
-  '#B4E7CE', // Mint
-  '#E0BBE4', // Lavender
-  '#FFDAB9', // Light Orange
-  '#B0E0E6', // Powder Blue
-  '#F0E68C', // Khaki
-  '#DDA0DD', // Plum
-];
+// Sticky note colors mapped to categories
+const CATEGORY_COLORS: { [key: string]: string } = {
+  Random: '#FFE5B4',    // Peach
+  Vent: '#FF6B6B',      // Red (for venting frustration)
+  Confession: '#E0BBE4', // Lavender (mysterious)
+  Advice: '#FFD93D',    // Yellow (bright idea)
+  Gaming: '#6BCF7F',    // Green (gaming theme)
+  Love: '#FFD1DC',      // Pink (romantic)
+  Technology: '#74C0FC', // Blue (tech)
+  Music: '#DDA0DD',     // Plum (creative)
+};
 
 // Handwriting-style font variations (using transform for variety)
 const HANDWRITING_STYLES = [
@@ -76,8 +76,8 @@ const WhisperBubble: React.FC<WhisperBubbleProps> = ({ whisper, index, theme, on
     return emojiMap[category] || '💭';
   };
 
-  const colorIndex = index % STICKY_COLORS.length;
-  const stickyColor = STICKY_COLORS[colorIndex];
+  // Get color based on category, fallback to Random color
+  const stickyColor = CATEGORY_COLORS[whisper.category] || CATEGORY_COLORS.Random;
   const handwritingStyle = HANDWRITING_STYLES[index % HANDWRITING_STYLES.length];
   const hasImage = whisper.content?.media && whisper.content.media.length > 0;
 

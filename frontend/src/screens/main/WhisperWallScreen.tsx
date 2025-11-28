@@ -754,11 +754,36 @@ const WhisperWallScreen: React.FC = () => {
 
       {/* Whisper Detail Modal */}
       <WhisperDetailModal
+        key={selectedWhisper?._id || 'no-whisper'}
         visible={!!selectedWhisper}
         whisper={selectedWhisper}
         theme={dailyTheme}
         onClose={() => setSelectedWhisper(null)}
         onReact={handleReact}
+        onNext={() => {
+          const currentIndex = whispers.findIndex(w => w._id === selectedWhisper?._id);
+          console.log('📱 onNext called:', { currentIndex, totalWhispers: whispers.length });
+          if (currentIndex < whispers.length - 1) {
+            const nextWhisper = whispers[currentIndex + 1];
+            console.log('✅ Setting next whisper:', nextWhisper._id);
+            setSelectedWhisper(nextWhisper);
+          } else {
+            console.log('❌ No next whisper available');
+          }
+        }}
+        onPrevious={() => {
+          const currentIndex = whispers.findIndex(w => w._id === selectedWhisper?._id);
+          console.log('📱 onPrevious called:', { currentIndex, totalWhispers: whispers.length });
+          if (currentIndex > 0) {
+            const prevWhisper = whispers[currentIndex - 1];
+            console.log('✅ Setting previous whisper:', prevWhisper._id);
+            setSelectedWhisper(prevWhisper);
+          } else {
+            console.log('❌ No previous whisper available');
+          }
+        }}
+        hasNext={selectedWhisper ? whispers.findIndex(w => w._id === selectedWhisper._id) < whispers.length - 1 : false}
+        hasPrevious={selectedWhisper ? whispers.findIndex(w => w._id === selectedWhisper._id) > 0 : false}
       />
     </View>
   );

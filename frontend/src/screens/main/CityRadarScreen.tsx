@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../../context/ThemeContext';
+import { useAuth } from '../../context/AuthContext';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
@@ -28,12 +29,27 @@ interface LocationPost {
   author: { username: string; avatar?: string };
   createdAt: string;
   category?: string;
+  poll?: {
+    enabled: boolean;
+    type: 'yesno' | 'emoji' | 'multi';
+    question: string;
+    options: Array<{
+      text: string;
+      emoji?: string;
+      votes: string[];
+      voteCount: number;
+    }>;
+    totalVotes: number;
+    isAnonymous: boolean;
+  };
 }
 
 const CityRadarScreen: React.FC = () => {
   const { theme } = useTheme();
+  const { user } = useAuth();
   const navigation = useNavigation();
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
+  const [locationName, setLocationName] = useState<string>('');
   const [selectedRing, setSelectedRing] = useState<'inner' | 'mid' | 'outer' | null>(null);
   const [posts, setPosts] = useState<LocationPost[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,6 +61,19 @@ const CityRadarScreen: React.FC = () => {
   const midRingAnim = useRef(new Animated.Value(1)).current;
   const outerRingAnim = useRef(new Animated.Value(1)).current;
   const particleAnims = useRef(Array.from({ length: 20 }, () => new Animated.Value(0))).current;
+  
+  // Scroll-based collapse animation
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const radarHeight = scrollY.interpolate({
+    inputRange: [0, 100],
+    outputRange: [height * 0.4, 0],
+    extrapolate: 'clamp',
+  });
+  const radarOpacity = scrollY.interpolate({
+    inputRange: [0, 50, 100],
+    outputRange: [1, 0.5, 0],
+    extrapolate: 'clamp',
+  });
 
   useEffect(() => {
     requestLocationPermission();
@@ -66,6 +95,24 @@ const CityRadarScreen: React.FC = () => {
       
       const currentLocation = await Location.getCurrentPositionAsync({});
       setLocation(currentLocation);
+      
+      // Get readable location name
+      const reverseGeocode = await Location.reverseGeocodeAsync({
+        latitude: currentLocation.coords.latitude,
+        longitude: currentLocation.coords.longitude,
+      });
+      
+      if (reverseGeocode && reverseGeocode.length > 0) {
+        const place = reverseGeocode[0];
+        const parts = [];
+        if (place.name) parts.push(place.name);
+        if (place.district) parts.push(place.district);
+        if (place.city) parts.push(place.city);
+        setLocationName(parts.join(', ') || 'Your Location');
+      } else {
+        setLocationName('Your Location');
+      }
+      
       loadNearbyPosts(currentLocation);
     } catch (error) {
       console.error('Location error:', error);
@@ -232,6 +279,60 @@ const CityRadarScreen: React.FC = () => {
     return colors[ring];
   };
 
+  const handlePollVote = async (postId: string, optionIndex: number) => {
+    try {
+      const response = await postsAPI.voteOnPoll(postId, optionIndex);
+      
+      if (response.success && (response as any).poll) {
+        const updatedPollData = (response as any).poll;
+        const currentUserId = user?._id;
+        
+        // Update the post in the local state
+        setPosts(prevPosts => 
+          prevPosts.map(post => {
+            if (post._id === postId && post.poll) {
+              // Merge the updated poll data with existing poll structure
+              const updatedOptions = post.poll.options.map((option, idx) => {
+                const updatedOption = updatedPollData.options[idx];
+                return {
+                  ...option,
+                  voteCount: updatedOption?.voteCount || 0,
+                  // Update votes array: add current user if they voted for this option
+                  votes: updatedOption?.hasVoted && currentUserId
+                    ? [...(option.votes || []).filter(id => id !== currentUserId), currentUserId]
+                    : (option.votes || []).filter(id => currentUserId ? id !== currentUserId : true),
+                };
+              });
+              
+              return {
+                ...post,
+                poll: {
+                  ...post.poll,
+                  options: updatedOptions,
+                  totalVotes: updatedPollData.totalVotes,
+                },
+              };
+            }
+            return post;
+          })
+        );
+        
+        Toast.show({
+          type: 'success',
+          text1: 'Vote Recorded! ✅',
+          text2: 'Your vote has been counted',
+        });
+      }
+    } catch (error) {
+      console.error('Error voting on poll:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to record vote',
+      });
+    }
+  };
+
   const styles = StyleSheet.create({
     container: {
       flex: 1,
@@ -263,6 +364,10 @@ const CityRadarScreen: React.FC = () => {
     },
     radarCenterContainer: {
       position: 'absolute',
+      top: '50%',
+      left: '50%',
+      marginLeft: -16,
+      marginTop: -16,
       zIndex: 100,
       justifyContent: 'center',
       alignItems: 'center',
@@ -294,6 +399,8 @@ const CityRadarScreen: React.FC = () => {
     },
     ringTouchable: {
       position: 'absolute',
+      top: '50%',
+      left: '50%',
       zIndex: 5,
     },
     ring: {
@@ -386,6 +493,68 @@ const CityRadarScreen: React.FC = () => {
       fontWeight: '600',
       color: theme.colors.primary,
     },
+    pollContainer: {
+      marginTop: theme.spacing.md,
+      gap: theme.spacing.sm,
+    },
+    pollOption: {
+      position: 'relative',
+      borderRadius: 12,
+      borderWidth: 2,
+      borderColor: theme.colors.border,
+      backgroundColor: theme.colors.background,
+      overflow: 'hidden',
+      minHeight: 48,
+      justifyContent: 'center',
+    },
+    pollOptionSelected: {
+      borderColor: theme.colors.primary,
+      backgroundColor: theme.colors.primary + '15',
+      borderWidth: 2.5,
+    },
+    pollOptionContent: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: theme.spacing.sm,
+      zIndex: 2,
+    },
+    pollOptionText: {
+      fontSize: 14,
+      fontWeight: '500',
+      color: theme.colors.text,
+      flex: 1,
+    },
+    pollOptionTextSelected: {
+      fontWeight: '600',
+      color: theme.colors.primary,
+    },
+    pollPercentage: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: theme.colors.textSecondary,
+      marginLeft: theme.spacing.sm,
+    },
+    pollPercentageSelected: {
+      color: theme.colors.primary,
+    },
+    pollProgressBar: {
+      position: 'absolute',
+      left: 0,
+      top: 0,
+      bottom: 0,
+      backgroundColor: theme.colors.primary + '20',
+      zIndex: 1,
+      borderRadius: 10,
+    },
+    pollTotalVotes: {
+      fontSize: 12,
+      color: theme.colors.textSecondary,
+      textAlign: 'center',
+      marginTop: theme.spacing.xs,
+      fontWeight: '500',
+    },
     emptyState: {
       flex: 1,
       justifyContent: 'center',
@@ -449,16 +618,17 @@ const CityRadarScreen: React.FC = () => {
         <View style={styles.header}>
           <Text style={styles.headerTitle}>🌐 City Radar</Text>
           <Text style={styles.headerSubtitle}>
-            {location ? 'Scanning your area...' : 'Requesting location...'}
+            {locationName || (location ? 'Scanning your area...' : 'Requesting location...')}
           </Text>
         </View>
       </SafeAreaView>
 
-      {/* Radar Visualization */}
-      <LinearGradient
-        colors={[theme.colors.background, theme.colors.surface]}
-        style={styles.radarContainer}
-      >
+      {/* Radar Visualization - Collapsible */}
+      <Animated.View style={{ height: radarHeight, opacity: radarOpacity, overflow: 'hidden' }}>
+        <LinearGradient
+          colors={[theme.colors.background, theme.colors.surface]}
+          style={[styles.radarContainer, { height: height * 0.4 }]}
+        >
         {/* Floating Particles */}
         {particleAnims.map((anim, index) => {
           const angle = (index / particleAnims.length) * Math.PI * 2;
@@ -515,11 +685,11 @@ const CityRadarScreen: React.FC = () => {
           </View>
         </View>
 
-        {/* Inner Ring (0-2 km) - Around YOU */}
+        {/* Inner Ring (0-2 km) - Centered around YOU */}
         <TouchableOpacity
           activeOpacity={0.8}
           onPress={() => handleRingPress('inner')}
-          style={styles.ringTouchable}
+          style={[styles.ringTouchable, { marginLeft: -50, marginTop: -50 }]}
         >
           <Animated.View
             style={[
@@ -541,11 +711,11 @@ const CityRadarScreen: React.FC = () => {
           </Animated.View>
         </TouchableOpacity>
 
-        {/* Mid Ring (2-10 km) - Around YOU */}
+        {/* Mid Ring (2-10 km) - Centered around YOU */}
         <TouchableOpacity
           activeOpacity={0.8}
           onPress={() => handleRingPress('mid')}
-          style={styles.ringTouchable}
+          style={[styles.ringTouchable, { marginLeft: -90, marginTop: -90 }]}
         >
           <Animated.View
             style={[
@@ -567,11 +737,11 @@ const CityRadarScreen: React.FC = () => {
           </Animated.View>
         </TouchableOpacity>
 
-        {/* Outer Ring (10-50 km) - Around YOU */}
+        {/* Outer Ring (10-50 km) - Centered around YOU */}
         <TouchableOpacity
           activeOpacity={0.8}
           onPress={() => handleRingPress('outer')}
-          style={styles.ringTouchable}
+          style={[styles.ringTouchable, { marginLeft: -140, marginTop: -140 }]}
         >
           <Animated.View
             style={[
@@ -593,6 +763,7 @@ const CityRadarScreen: React.FC = () => {
           </Animated.View>
         </TouchableOpacity>
       </LinearGradient>
+      </Animated.View>
 
       {/* Ring Controls */}
       <View style={styles.controlsContainer}>
@@ -643,15 +814,17 @@ const CityRadarScreen: React.FC = () => {
       </View>
 
       {/* Posts Feed */}
-      <ScrollView style={styles.postsContainer}>
+      <Animated.ScrollView 
+        style={styles.postsContainer}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: false }
+        )}
+        scrollEventThrottle={16}
+      >
         {filteredPosts.length > 0 ? (
           filteredPosts.map((post) => (
-            <TouchableOpacity
-              key={post._id}
-              style={styles.postCard}
-              onPress={() => (navigation as any).navigate('PostDetail', { postId: post._id })}
-              activeOpacity={0.7}
-            >
+            <View key={post._id} style={styles.postCard}>
               <View style={styles.postHeader}>
                 <Text style={styles.postAuthor}>@{post.author.username}</Text>
                 <View
@@ -682,11 +855,79 @@ const CityRadarScreen: React.FC = () => {
                   </Text>
                 </View>
               </View>
-              <Text style={styles.postContent}>{post.content.text}</Text>
+              
+              <TouchableOpacity
+                onPress={() => (navigation as any).navigate('PostDetail', { postId: post._id })}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.postContent}>{post.content.text}</Text>
+              </TouchableOpacity>
+
+              {/* Poll Display - Always shows results */}
+              {post.poll?.enabled && (
+                <View style={styles.pollContainer}>
+                  {post.poll.options.map((option: any, index: number) => {
+                    // Calculate percentage - always show even if 0 votes
+                    const percentage = post.poll!.totalVotes > 0 
+                      ? Math.round((option.voteCount / post.poll!.totalVotes) * 100) 
+                      : 0;
+                    
+                    // Check if current user voted for this option
+                    const hasVoted = user?._id && option.votes?.includes(user._id);
+                    
+                    // Check if user has voted on any option in this poll
+                    const userHasVotedOnPoll = user?._id && post.poll!.options.some(
+                      (opt: any) => opt.votes?.includes(user._id)
+                    );
+                    
+                    return (
+                      <TouchableOpacity
+                        key={index}
+                        style={[
+                          styles.pollOption,
+                          hasVoted && styles.pollOptionSelected,
+                        ]}
+                        onPress={() => handlePollVote(post._id, index)}
+                        activeOpacity={0.7}
+                      >
+                        <View style={styles.pollOptionContent}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                            {hasVoted && <Text style={{ marginRight: 6, fontSize: 16 }}>✓</Text>}
+                            <Text style={[
+                              styles.pollOptionText,
+                              hasVoted && styles.pollOptionTextSelected,
+                            ]}>
+                              {option.text}
+                            </Text>
+                          </View>
+                          <Text style={[
+                            styles.pollPercentage,
+                            hasVoted && styles.pollPercentageSelected,
+                          ]}>
+                            {percentage}%
+                          </Text>
+                        </View>
+                        {/* Progress bar - always visible */}
+                        <View style={[
+                          styles.pollProgressBar,
+                          { 
+                            width: `${percentage}%`,
+                            minWidth: percentage > 0 ? '2%' : '0%', // Show at least a small bar if there are votes
+                          },
+                        ]} />
+                      </TouchableOpacity>
+                    );
+                  })}
+                  <Text style={styles.pollTotalVotes}>
+                    {post.poll.totalVotes} {post.poll.totalVotes === 1 ? 'response' : 'responses'}
+                  </Text>
+                </View>
+              )}
+
               {post.category && (
                 <Text style={styles.postCategory}>#{post.category}</Text>
               )}
-            </TouchableOpacity>
+            </View>
           ))
         ) : (
           <View style={styles.emptyState}>
@@ -701,7 +942,7 @@ const CityRadarScreen: React.FC = () => {
             </Text>
           </View>
         )}
-      </ScrollView>
+      </Animated.ScrollView>
 
       {/* Floating Action Button - Create Location Post */}
       <TouchableOpacity
@@ -727,8 +968,8 @@ const CityRadarScreen: React.FC = () => {
         location={location ? { latitude: location.coords.latitude, longitude: location.coords.longitude } : null}
         onSubmit={async (postData) => {
           try {
-            // Create post with location
-            const response = await postsAPI.createPost({
+            // Build post payload
+            const payload: any = {
               content: { text: postData.content },
               category: postData.category,
               geoLocation: {
@@ -739,9 +980,31 @@ const CityRadarScreen: React.FC = () => {
               vanishMode: postData.duration !== 'permanent' ? {
                 enabled: true,
                 duration: postData.duration === '1h' ? '1hour' : 
+                         postData.duration === '3h' ? '6hours' :
+                         postData.duration === '6h' ? '6hours' :
+                         postData.duration === '12h' ? '12hours' :
                          postData.duration === '24h' ? '1day' : '1day',
               } : undefined,
-            });
+            };
+
+            // Add poll data if it's a poll post
+            if (postData.type === 'poll' && postData.pollOptions && postData.pollOptions.length >= 2) {
+              payload.poll = {
+                enabled: true,
+                type: 'multi',
+                question: postData.content,
+                options: postData.pollOptions.map((text: string) => ({
+                  text,
+                  votes: [],
+                  voteCount: 0,
+                })),
+                totalVotes: 0,
+                isAnonymous: true,
+              };
+            }
+
+            // Create post with location
+            const response = await postsAPI.createPost(payload);
 
             if (response.success) {
               Toast.show({

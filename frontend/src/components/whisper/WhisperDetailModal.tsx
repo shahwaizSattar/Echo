@@ -12,6 +12,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Image,
+  PanResponder,
 } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { whisperWallAPI } from '../../services/api';
@@ -27,6 +28,10 @@ interface WhisperDetailModalProps {
   theme: WhisperTheme;
   onClose: () => void;
   onReact: (reactionType: string) => void;
+  onNext?: () => void;
+  onPrevious?: () => void;
+  hasNext?: boolean;
+  hasPrevious?: boolean;
 }
 
 const REACTIONS = [
@@ -44,6 +49,10 @@ const WhisperDetailModal: React.FC<WhisperDetailModalProps> = ({
   theme: whisperTheme,
   onClose,
   onReact,
+  onNext,
+  onPrevious,
+  hasNext = false,
+  hasPrevious = false,
 }) => {
   const { theme } = useTheme();
   const [comment, setComment] = useState('');
@@ -53,23 +62,152 @@ const WhisperDetailModal: React.FC<WhisperDetailModalProps> = ({
   
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
+  const panY = useRef(new Animated.Value(0)).current;
+  const panX = useRef(new Animated.Value(0)).current;
+  const [swipeDirection, setSwipeDirection] = useState<'left' | 'right' | null>(null);
+
+  // Pan responder for swipe gestures (down, left, right)
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        // Capture any significant movement
+        return Math.abs(gestureState.dx) > 5 || Math.abs(gestureState.dy) > 5;
+      },
+      onPanResponderMove: (_, gestureState) => {
+        const isVertical = Math.abs(gestureState.dy) > Math.abs(gestureState.dx);
+        
+        if (isVertical && gestureState.dy > 0) {
+          // Vertical swipe down
+          panY.setValue(gestureState.dy);
+          panX.setValue(0);
+        } else if (!isVertical) {
+          // Horizontal swipe
+          panX.setValue(gestureState.dx);
+          panY.setValue(0);
+        }
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        const isVertical = Math.abs(gestureState.dy) > Math.abs(gestureState.dx);
+        
+        console.log('🔄 Swipe detected:', {
+          dx: gestureState.dx,
+          dy: gestureState.dy,
+          isVertical,
+          hasNext,
+          hasPrevious,
+        });
+        
+        if (isVertical && gestureState.dy > 100) {
+          // Swipe down - close modal
+          console.log('⬇️ Closing modal');
+          onClose();
+          setTimeout(() => {
+            panY.setValue(0);
+            panX.setValue(0);
+          }, 300);
+        } else if (!isVertical && Math.abs(gestureState.dx) > 50) {
+          // Horizontal swipe - reduced threshold to 50px
+          if (gestureState.dx > 0 && hasPrevious && onPrevious) {
+            // Swipe right - previous post
+            console.log('➡️ Going to previous post');
+            setSwipeDirection('right');
+            Animated.timing(panX, {
+              toValue: SCREEN_WIDTH,
+              duration: 200,
+              useNativeDriver: true,
+            }).start(() => {
+              onPrevious();
+            });
+          } else if (gestureState.dx < 0 && hasNext && onNext) {
+            // Swipe left - next post
+            console.log('⬅️ Going to next post');
+            setSwipeDirection('left');
+            Animated.timing(panX, {
+              toValue: -SCREEN_WIDTH,
+              duration: 200,
+              useNativeDriver: true,
+            }).start(() => {
+              onNext();
+            });
+          } else {
+            // Not enough swipe or no next/previous - spring back
+            console.log('↩️ Spring back');
+            Animated.spring(panX, {
+              toValue: 0,
+              tension: 50,
+              friction: 7,
+              useNativeDriver: true,
+            }).start();
+          }
+        } else {
+          // Not enough swipe - spring back to original position
+          Animated.parallel([
+            Animated.spring(panY, {
+              toValue: 0,
+              tension: 50,
+              friction: 7,
+              useNativeDriver: true,
+            }),
+            Animated.spring(panX, {
+              toValue: 0,
+              tension: 50,
+              friction: 7,
+              useNativeDriver: true,
+            }),
+          ]).start();
+        }
+      },
+      onPanResponderTerminationRequest: () => false,
+    })
+  ).current;
 
   useEffect(() => {
     if (visible) {
+      // Determine entry position based on swipe direction
+      if (swipeDirection === 'left') {
+        // Swiped left, so new post comes from right
+        panX.setValue(SCREEN_WIDTH);
+      } else if (swipeDirection === 'right') {
+        // Swiped right, so new post comes from left
+        panX.setValue(-SCREEN_WIDTH);
+      } else {
+        // Initial open - slide from bottom
+        panX.setValue(0);
+      }
+      
+      // Reset other animation values
+      scaleAnim.setValue(swipeDirection ? 1 : 0);
+      slideAnim.setValue(swipeDirection ? 0 : SCREEN_HEIGHT);
+      panY.setValue(0);
+      
       // Entry animation
-      Animated.parallel([
-        Animated.spring(scaleAnim, {
-          toValue: 1,
-          tension: 50,
-          friction: 7,
-          useNativeDriver: true,
-        }),
-        Animated.timing(slideAnim, {
+      if (swipeDirection) {
+        // Horizontal slide animation
+        Animated.spring(panX, {
           toValue: 0,
-          duration: 300,
+          tension: 50,
+          friction: 8,
           useNativeDriver: true,
-        }),
-      ]).start();
+        }).start(() => {
+          setSwipeDirection(null);
+        });
+      } else {
+        // Initial popup animation
+        Animated.parallel([
+          Animated.spring(scaleAnim, {
+            toValue: 1,
+            tension: 50,
+            friction: 7,
+            useNativeDriver: true,
+          }),
+          Animated.timing(slideAnim, {
+            toValue: 0,
+            duration: 300,
+            useNativeDriver: true,
+          }),
+        ]).start();
+      }
     } else {
       // Exit animation
       Animated.parallel([
@@ -85,7 +223,14 @@ const WhisperDetailModal: React.FC<WhisperDetailModalProps> = ({
         }),
       ]).start();
     }
-  }, [visible]);
+  }, [visible, whisper]);
+
+  // Update comments when whisper changes
+  useEffect(() => {
+    if (whisper) {
+      setComments(whisper.comments || []);
+    }
+  }, [whisper]);
 
   const handleAddComment = async () => {
     if (!comment.trim()) return;
@@ -145,6 +290,17 @@ const WhisperDetailModal: React.FC<WhisperDetailModalProps> = ({
       overflow: 'hidden',
       borderWidth: 2,
       borderColor: whisperTheme.accentColor + '44',
+    },
+    swipeIndicatorContainer: {
+      paddingVertical: 12,
+      alignItems: 'center',
+      backgroundColor: 'transparent',
+    },
+    swipeIndicator: {
+      width: 40,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: whisperTheme.textColor + '44',
     },
     header: {
       flexDirection: 'row',
@@ -335,16 +491,23 @@ const WhisperDetailModal: React.FC<WhisperDetailModalProps> = ({
         )}
         
         <Animated.View
+          {...panResponder.panHandlers}
           style={[
             styles.modalContent,
             {
               transform: [
                 { scale: scaleAnim },
-                { translateY: slideAnim },
+                { translateY: Animated.add(slideAnim, panY) },
+                { translateX: panX },
               ],
             },
           ]}
         >
+          {/* Swipe Indicator */}
+          <View style={styles.swipeIndicatorContainer}>
+            <View style={styles.swipeIndicator} />
+          </View>
+
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.categoryBadge}>

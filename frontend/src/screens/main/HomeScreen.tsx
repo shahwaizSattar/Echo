@@ -13,6 +13,7 @@ import {
   StatusBar,
   Animated,
   Modal,
+  TextInput,
 } from 'react-native';
 import { Video, ResizeMode, Audio } from 'expo-av';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -101,6 +102,13 @@ const HomeScreen: React.FC = () => {
     removedPosts?: any[];
   }>({ type: null });
   const [hoveredPost, setHoveredPost] = useState<string | null>(null);
+  
+  // Search state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [showSearchDropdown, setShowSearchDropdown] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const loadPosts = async () => {
     try {
@@ -433,6 +441,125 @@ const HomeScreen: React.FC = () => {
     setActiveCategory(null);
     setFilteredPosts([]);
   };
+
+  // Search handler with debounce
+  const handleSearch = async (query: string) => {
+    setSearchQuery(query);
+    
+    if (query.trim().length === 0) {
+      setSearchResults([]);
+      setShowSearchDropdown(false);
+      return;
+    }
+
+    // Clear previous timeout
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    // Show dropdown immediately
+    setShowSearchDropdown(true);
+    setIsSearching(true);
+
+    // Debounce search by 200ms
+    searchTimeoutRef.current = setTimeout(async () => {
+      try {
+        const isUserSearch = query.startsWith('@');
+        const isHashtagSearch = query.startsWith('#');
+        const searchTerm = isUserSearch || isHashtagSearch ? query.slice(1) : query;
+
+        let results: any[] = [];
+
+        // Search users and posts
+        const [userResponse, postResponse] = await Promise.all([
+          userAPI.searchUsers(searchTerm, 1, isUserSearch ? 8 : 4),
+          postsAPI.searchPosts(searchTerm, 1, isUserSearch ? 0 : 8),
+        ]);
+
+        // Add user results
+        if (userResponse.success && userResponse.data) {
+          results = [
+            ...results,
+            ...userResponse.data.map((user: any) => ({
+              type: 'user',
+              data: user,
+            })),
+          ];
+        }
+
+        // Add post results
+        if (postResponse.success && postResponse.data) {
+          results = [
+            ...results,
+            ...postResponse.data.map((post: any) => ({
+              type: 'post',
+              data: post,
+            })),
+          ];
+        }
+
+        // Add category suggestions
+        const categories = ['tech', 'sports', 'music', 'gaming', 'food', 'travel', 'art', 'fashion'];
+        const matchingCategories = categories.filter(cat => 
+          cat.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+        if (matchingCategories.length > 0 && !isUserSearch) {
+          results = [
+            ...matchingCategories.map(cat => ({
+              type: 'category',
+              data: { name: cat },
+            })),
+            ...results,
+          ];
+        }
+
+        // Add hashtag suggestion
+        if (isHashtagSearch && searchTerm.length > 0) {
+          results = [
+            {
+              type: 'hashtag',
+              data: { tag: searchTerm },
+            },
+            ...results,
+          ];
+        }
+
+        setSearchResults(results);
+      } catch (error) {
+        console.error('Search error:', error);
+        setSearchResults([]);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 200);
+  };
+
+  const handleSearchResultClick = (result: any) => {
+    if (result.type === 'user') {
+      navigation.navigate('UserProfile', { username: result.data.username });
+    } else if (result.type === 'post') {
+      navigation.navigate('PostDetail', { postId: result.data._id });
+    } else if (result.type === 'category') {
+      handleCategoryFilter(result.data.name);
+    } else if (result.type === 'hashtag') {
+      // For hashtag, just filter by the tag as a category
+      handleCategoryFilter(result.data.tag);
+    }
+    
+    // Close dropdown and clear search
+    setShowSearchDropdown(false);
+    setSearchQuery('');
+    setSearchResults([]);
+  };
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, []);
 
 
 
@@ -809,6 +936,99 @@ const HomeScreen: React.FC = () => {
       color: theme.colors.text,
       fontWeight: 'bold',
     },
+    searchContainer: {
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: theme.spacing.sm,
+      backgroundColor: theme.colors.surface,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.border,
+    },
+    searchInputContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: theme.colors.background,
+      borderRadius: 20,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      height: 40,
+    },
+    searchIcon: {
+      fontSize: 16,
+      marginRight: 8,
+      color: theme.colors.textSecondary,
+    },
+    searchInput: {
+      flex: 1,
+      fontSize: 15,
+      color: theme.colors.text,
+      paddingVertical: 0,
+      height: 40,
+    },
+    clearButton: {
+      padding: 4,
+    },
+    clearButtonText: {
+      fontSize: 16,
+      color: theme.colors.textSecondary,
+    },
+    searchBackdrop: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      zIndex: 999,
+    },
+    searchDropdown: {
+      backgroundColor: theme.colors.surface,
+      borderRadius: theme.borderRadius.md,
+      marginHorizontal: theme.spacing.md,
+      marginTop: theme.spacing.xs,
+      maxHeight: 400,
+      ...theme.shadows.large,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      zIndex: 1000,
+    },
+    searchResultItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: theme.spacing.md,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.border + '40',
+    },
+    searchResultIcon: {
+      fontSize: 24,
+      marginRight: theme.spacing.md,
+    },
+    searchResultContent: {
+      flex: 1,
+    },
+    searchResultTitle: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: theme.colors.text,
+      marginBottom: 2,
+    },
+    searchResultSubtitle: {
+      fontSize: 14,
+      color: theme.colors.textSecondary,
+    },
+    searchLoadingText: {
+      padding: theme.spacing.lg,
+      textAlign: 'center',
+      color: theme.colors.textSecondary,
+      fontSize: 14,
+    },
+    searchEmptyText: {
+      padding: theme.spacing.lg,
+      textAlign: 'center',
+      color: theme.colors.textSecondary,
+      fontSize: 14,
+    },
     voiceNoteContainer: {
       marginVertical: theme.spacing.md,
       backgroundColor: theme.colors.surface,
@@ -1125,11 +1345,32 @@ const HomeScreen: React.FC = () => {
             </Text>
           </View>
           
-          {/* Center: App Title */}
-          <View style={{ flex: 1, alignItems: 'center' }}>
-            <Text style={{ fontSize: 18, fontWeight: 'bold', color: theme.colors.text }}>
-              Feed
-            </Text>
+          {/* Center: Search Bar */}
+          <View style={{ flex: 1, marginHorizontal: theme.spacing.sm }}>
+            <View style={styles.searchInputContainer}>
+              <Text style={styles.searchIcon}>🔍</Text>
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search..."
+                placeholderTextColor={theme.colors.textSecondary}
+                value={searchQuery}
+                onChangeText={handleSearch}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              {searchQuery.length > 0 && (
+                <TouchableOpacity
+                  style={styles.clearButton}
+                  onPress={() => {
+                    setSearchQuery('');
+                    setSearchResults([]);
+                    setShowSearchDropdown(false);
+                  }}
+                >
+                  <Text style={styles.clearButtonText}>✕</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
 
           {/* Right: Messaging and Notification Icons */}
@@ -1146,7 +1387,59 @@ const HomeScreen: React.FC = () => {
       </View>
       </SafeAreaView>
 
+      {/* Search Backdrop */}
+      {showSearchDropdown && (
+        <TouchableOpacity
+          style={styles.searchBackdrop}
+          activeOpacity={1}
+          onPress={() => {
+            setShowSearchDropdown(false);
+            setSearchQuery('');
+            setSearchResults([]);
+          }}
+        />
+      )}
 
+      {/* Search Dropdown */}
+      {showSearchDropdown && (
+        <View style={styles.searchDropdown}>
+          <ScrollView style={{ maxHeight: 400 }}>
+            {isSearching ? (
+              <Text style={styles.searchLoadingText}>Searching...</Text>
+            ) : searchResults.length === 0 ? (
+              <Text style={styles.searchEmptyText}>No results found</Text>
+            ) : (
+              searchResults.map((result, index) => (
+                <TouchableOpacity
+                  key={index}
+                  style={styles.searchResultItem}
+                  onPress={() => handleSearchResultClick(result)}
+                >
+                  <Text style={styles.searchResultIcon}>
+                    {result.type === 'user' ? '👤' : 
+                     result.type === 'post' ? '📝' : 
+                     result.type === 'category' ? '📂' : '🏷️'}
+                  </Text>
+                  <View style={styles.searchResultContent}>
+                    <Text style={styles.searchResultTitle}>
+                      {result.type === 'user' ? `@${result.data.username}` :
+                       result.type === 'post' ? result.data.content?.text?.substring(0, 50) + '...' :
+                       result.type === 'category' ? `#${result.data.name}` :
+                       `#${result.data.tag}`}
+                    </Text>
+                    <Text style={styles.searchResultSubtitle}>
+                      {result.type === 'user' ? result.data.bio?.substring(0, 60) || 'No bio' :
+                       result.type === 'post' ? `by @${result.data.author?.username || 'Unknown'}` :
+                       result.type === 'category' ? 'Category' :
+                       'Hashtag'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))
+            )}
+          </ScrollView>
+        </View>
+      )}
 
       {/* Category Filter Header */}
       {activeCategory && (

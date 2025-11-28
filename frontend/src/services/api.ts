@@ -341,9 +341,22 @@ export const postsAPI = {
     disguiseAvatar?: string;
     vanishMode?: {
       enabled: boolean;
-      duration?: '1hour' | '1day' | '1week';
+      duration?: '1hour' | '6hours' | '12hours' | '1day' | '1week';
     };
     tags?: string[];
+    poll?: {
+      enabled: boolean;
+      type: 'yesno' | 'emoji' | 'multi';
+      question: string;
+      options: Array<{
+        text: string;
+        emoji?: string;
+        votes: any[];
+        voteCount: number;
+      }>;
+      totalVotes: number;
+      isAnonymous: boolean;
+    };
     geoLocation?: {
       type: 'Point';
       coordinates: [number, number];
@@ -473,6 +486,21 @@ export const postsAPI = {
 
   markOneTimeViewed: async (postId: string): Promise<ApiResponse> => {
     const response: AxiosResponse<ApiResponse> = await api.post(`/posts/${postId}/mark-viewed`);
+    return response.data;
+  },
+
+  voteOnPoll: async (postId: string, optionIndex: number): Promise<ApiResponse> => {
+    const response: AxiosResponse<ApiResponse> = await api.post(`/posts/${postId}/poll/vote`, {
+      optionIndex,
+    });
+    return response.data;
+  },
+
+  lockPost: async (postId: string, lockType: 'comments' | 'reactions' | 'both', locked: boolean): Promise<ApiResponse> => {
+    const response: AxiosResponse<ApiResponse> = await api.post(`/posts/${postId}/lock`, {
+      lockType,
+      locked,
+    });
     return response.data;
   },
 };
