@@ -63,8 +63,15 @@ router.post('/signup', validateSignup, async (req, res) => {
     delete userData.password;
 
     console.log("Signup successful for:", email); // 🔹 debug
+    console.log("🎭 Fake IP for this session:", req.fakeIP || req.ip);
 
-    res.status(201).json({ success: true, message: 'User created successfully', token, user: userData });
+    res.status(201).json({ 
+      success: true, 
+      message: 'User created successfully', 
+      token, 
+      user: userData,
+      fakeIP: req.fakeIP || req.ip // Include fake IP in response
+    });
   } catch (error) {
     console.error('Signup error:', error);
     res.status(500).json({ success: false, message: 'Server error during signup', error: process.env.NODE_ENV === 'development' ? error.message : undefined });
@@ -95,9 +102,16 @@ router.post('/login', validateLogin, async (req, res) => {
     const userData = user.toObject();
     delete userData.password;
 
-    console.log("Login successful for:", email); // 🔹 debug
+    console.log("Login successful for:", lookup); // 🔹 debug
+    console.log("🎭 Fake IP for this session:", req.fakeIP || req.ip);
 
-    res.json({ success: true, message: 'Login successful', token, user: userData });
+    res.json({ 
+      success: true, 
+      message: 'Login successful', 
+      token, 
+      user: userData,
+      fakeIP: req.fakeIP || req.ip // Include fake IP in response
+    });
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ success: false, message: 'Server error during login', error: process.env.NODE_ENV === 'development' ? error.message : undefined });

@@ -31,5 +31,8 @@
     "whisper"
   ],
   "author": "Your Name",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "axios": "^1.13.2"
+  }
 }

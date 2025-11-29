@@ -35,19 +35,24 @@ const locationRoutes = require('./routes/location');
 // Upload middleware
 const { uploadMiddleware, getFileUrl } = require('./middleware/upload');
 
+// Fake IP middleware
+const fakeIpMiddleware = require('./middleware/fakeIp');
+
+// --- DISABLE TRUST PROXY ---
+// This ensures Express doesn't try to read real IP from proxy headers
+app.set('trust proxy', false);
+
+// --- FAKE IP MIDDLEWARE (MUST BE FIRST) ---
+// This strips real IP and injects fake IP before any other middleware
+app.use(fakeIpMiddleware);
+
 // --- Security headers ---
 app.use(helmet());
 
 // --- CORS Setup ---
-// In production, you can set CORS_ORIGINS as a comma-separated list of allowed origins.
-const allowedOrigins = process.env.CORS_ORIGINS
-  ? process.env.CORS_ORIGINS.split(',').map(o => o.trim()).filter(Boolean)
-  : null;
-
+// Allow all origins with credentials for React/React Native frontend
 const corsOptions = {
-  origin: allowedOrigins && allowedOrigins.length > 0
-    ? allowedOrigins
-    : true, // Allow all origins when no explicit list is provided (useful for local/dev)
+  origin: '*', // Allow all origins
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   credentials: true
@@ -87,6 +92,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // --- Request logging middleware ---
 app.use((req, res, next) => {
   console.log(`📥 ${req.method} ${req.url} - ${new Date().toISOString()}`);
+  console.log(`🎭 Client Fake IP: ${req.fakeIP || req.ip}`);
 
   const isSensitiveAuthRoute = req.path.startsWith('/api/auth');
 
