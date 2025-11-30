@@ -24,6 +24,7 @@ import MessagesScreen from '../screens/main/MessagesScreen';
 import NotificationsScreen from '../screens/main/NotificationsScreen';
 import EditProfileScreen from '../screens/main/EditProfileScreen';
 import BlockedUsersScreen from '../screens/main/BlockedUsersScreen';
+import AvatarCustomizerScreen from '../screens/main/AvatarCustomizerScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -282,6 +283,13 @@ const MainNavigator: React.FC = () => {
       <Stack.Screen
         name="BlockedUsers"
         component={BlockedUsersScreen}
+        options={{
+          headerShown: false
+        }}
+      />
+      <Stack.Screen
+        name="AvatarCustomizer"
+        component={AvatarCustomizerScreen}
         options={{
           headerShown: false
         }}

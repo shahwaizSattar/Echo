@@ -5,6 +5,27 @@ const User = require('../models/User');
 
 const router = express.Router();
 
+// GET /api/chat/unread-count - get total unread message count
+router.get('/unread-count', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const convos = await Conversation.find({ participants: userId });
+    
+    let unreadCount = 0;
+    convos.forEach(c => {
+      unreadCount += c.messages.filter(m => 
+        String(m.sender) !== String(userId) && 
+        !m.readBy.some(id => String(id) === String(userId))
+      ).length;
+    });
+
+    res.json({ success: true, unreadCount });
+  } catch (e) {
+    console.error('Get unread count error:', e);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
 // GET /api/chat/conversations - list user's conversations
 router.get('/conversations', authenticateToken, async (req, res) => {
   try {
@@ -15,14 +36,24 @@ router.get('/conversations', authenticateToken, async (req, res) => {
       .select('participants lastMessageAt messages')
       .limit(50);
 
-    const data = convos.map(c => ({
-      _id: c._id,
-      participants: c.participants,
-      lastMessageAt: c.lastMessageAt,
-      lastMessage: c.messages?.length ? c.messages[c.messages.length - 1] : null,
-    }));
+    let totalUnread = 0;
+    const data = convos.map(c => {
+      const unreadCount = c.messages.filter(m => 
+        String(m.sender) !== String(userId) && 
+        !m.readBy.some(id => String(id) === String(userId))
+      ).length;
+      totalUnread += unreadCount;
+      
+      return {
+        _id: c._id,
+        participants: c.participants,
+        lastMessageAt: c.lastMessageAt,
+        lastMessage: c.messages?.length ? c.messages[c.messages.length - 1] : null,
+        unreadCount,
+      };
+    });
 
-    res.json({ success: true, conversations: data });
+    res.json({ success: true, conversations: data, unreadCount: totalUnread });
   } catch (e) {
     console.error('List conversations error:', e);
     res.status(500).json({ success: false, message: 'Server error' });
@@ -93,10 +124,22 @@ router.post('/messages/:peerId', authenticateToken, async (req, res) => {
       const { io } = require('../server');
       const senderUser = await User.findById(userId).select('username avatar');
       const savedMsg = convo.messages[convo.messages.length - 1];
+      
+      // Calculate unread count for receiver
+      const receiverConvos = await Conversation.find({ participants: peerId });
+      let unreadCount = 0;
+      receiverConvos.forEach(c => {
+        unreadCount += c.messages.filter(m => 
+          String(m.sender) !== String(peerId) && 
+          !m.readBy.some(id => String(id) === String(peerId))
+        ).length;
+      });
+      
       io.to(String(peerId)).emit('chat:new-message', {
         conversationId: convo._id,
         message: { _id: savedMsg._id, text: savedMsg.text, media: savedMsg.media, createdAt: savedMsg.createdAt, readBy: savedMsg.readBy },
         sender: senderUser ? { _id: senderUser._id, username: senderUser.username, avatar: senderUser.avatar } : { _id: userId },
+        unreadCount,
       });
     } catch (e) {}
 
@@ -175,7 +218,24 @@ router.post('/read/:peerId', authenticateToken, async (req, res) => {
         updated += 1;
       }
     });
-    if (updated > 0) await convo.save();
+    if (updated > 0) {
+      await convo.save();
+      
+      // Calculate new unread count and emit update
+      try {
+        const { io } = require('../server');
+        const allConvos = await Conversation.find({ participants: userId });
+        let unreadCount = 0;
+        allConvos.forEach(c => {
+          unreadCount += c.messages.filter(m => 
+            String(m.sender) !== String(userId) && 
+            !m.readBy.some(id => String(id) === String(userId))
+          ).length;
+        });
+        
+        io.to(String(userId)).emit('chat:unread-update', { unreadCount });
+      } catch (e) {}
+    }
     res.json({ success: true, updated });
   } catch (e) {
     console.error('Mark read error:', e);

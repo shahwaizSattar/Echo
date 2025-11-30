@@ -15,12 +15,15 @@ import {
   Keyboard,
   TouchableWithoutFeedback,
   KeyboardAvoidingView,
+  Switch,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import Slider from '@react-native-community/slider';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { whisperWallAPI, mediaAPI } from '../../services/api';
+import { getSocket } from '../../services/socket';
 import Toast from 'react-native-toast-message';
 import WhisperBubble from '../../components/whisper/WhisperBubble';
 import { WhisperTheme } from '../../components/whisper/WhisperTheme';
@@ -40,14 +43,31 @@ const WhisperWallScreen: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState('Random');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
-  const [dailyTheme, setDailyTheme] = useState(getDailyTheme());
   const [userStreak, setUserStreak] = useState(0);
   const [timeUntilReset, setTimeUntilReset] = useState('');
-  const [selectedAnimation, setSelectedAnimation] = useState('none');
+  const [selectedAnimation, setSelectedAnimation] = useState<'none' | 'rain' | 'neon' | 'fire' | 'snow' | 'hearts' | 'mist'>('none');
+  const [vanishMode, setVanishMode] = useState(false);
+  const [vanishDuration, setVanishDuration] = useState<'1hour' | '6hours' | '12hours' | '24hours' | 'custom'>('24hours');
+  const [customVanishMinutes, setCustomVanishMinutes] = useState(60);
+  const [oneTimePost, setOneTimePost] = useState(false);
+  const [vanishingWhispers, setVanishingWhispers] = useState<Set<string>>(new Set());
   
-  // Debug: Force Neon Rush theme for testing (remove this later)
-  // Uncomment the line below to test Neon Rush theme
-  // useEffect(() => { setDailyTheme(getThemeByMood('energetic')); }, []);
+  // Use global theme instead of daily theme
+  const dailyTheme = React.useMemo(() => ({
+    name: '🎨 Custom Theme',
+    backgroundColor: theme.colors.background,
+    headerColor: theme.colors.surface,
+    textColor: theme.colors.text,
+    accentColor: theme.colors.primary,
+    bubbleColors: [
+      theme.colors.card,
+      theme.colors.surface,
+      theme.colors.primary + '33',
+      theme.colors.secondary + '33',
+    ],
+    particleType: 'none' as const,
+    mood: 'calm' as const,
+  }), [theme]);
   
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scrollY = useRef(new Animated.Value(0)).current;
@@ -65,8 +85,86 @@ const WhisperWallScreen: React.FC = () => {
 
     // Update timer every minute
     const timer = setInterval(updateResetTimer, 60000);
-    return () => clearInterval(timer);
+    
+    // Check for expired posts every 5 seconds
+    const expiryChecker = setInterval(checkExpiredPosts, 5000);
+    
+    // Initialize socket and listen for events
+    const socket = getSocket();
+    socket.on('whispers:vanished', handleWhispersVanished);
+    socket.on('whispers:new', handleNewWhisper);
+    socket.on('whispers:updated', handleWhisperUpdated);
+    socket.on('whispers:deleted', handleWhisperDeleted);
+    
+    return () => {
+      clearInterval(timer);
+      clearInterval(expiryChecker);
+      socket.off('whispers:vanished', handleWhispersVanished);
+      socket.off('whispers:new', handleNewWhisper);
+      socket.off('whispers:updated', handleWhisperUpdated);
+      socket.off('whispers:deleted', handleWhisperDeleted);
+    };
   }, []);
+
+  const checkExpiredPosts = () => {
+    const now = new Date().getTime();
+    setWhispers(prevWhispers => 
+      prevWhispers.filter(whisper => {
+        if (whisper.vanishMode?.enabled && whisper.vanishMode?.vanishAt) {
+          const vanishTime = new Date(whisper.vanishMode.vanishAt).getTime();
+          if (vanishTime <= now) {
+            console.log('⏱️ Removing expired whisper:', whisper._id);
+            return false; // Remove expired post
+          }
+        }
+        return true; // Keep post
+      })
+    );
+  };
+
+  const handleWhispersVanished = (data: { postIds: string[] }) => {
+    console.log('🔔 Whispers vanished event:', data.postIds);
+    setWhispers(prevWhispers => 
+      prevWhispers.filter(whisper => !data.postIds.includes(whisper._id))
+    );
+  };
+
+  const handleNewWhisper = (data: { whisper: any }) => {
+    console.log('🔔 New whisper event:', data.whisper);
+    setWhispers(prevWhispers => [data.whisper, ...prevWhispers]);
+  };
+
+  const handleWhisperUpdated = (data: { whisper: any }) => {
+    console.log('🔔 Whisper updated event:', data.whisper);
+    setWhispers(prevWhispers => 
+      prevWhispers.map(whisper => 
+        whisper._id === data.whisper._id ? data.whisper : whisper
+      )
+    );
+    // Also update selectedWhisper if it's the one being viewed
+    setSelectedWhisper((prev: any) => 
+      prev?._id === data.whisper._id ? data.whisper : prev
+    );
+  };
+
+  const handleWhisperDeleted = (data: { postId: string }) => {
+    console.log('🔔 Whisper deleted event:', data.postId);
+    setWhispers(prevWhispers => 
+      prevWhispers.filter(whisper => whisper._id !== data.postId)
+    );
+    // Close modal if the deleted whisper is currently being viewed
+    setSelectedWhisper((prev: any) => 
+      prev?._id === data.postId ? null : prev
+    );
+  };
+
+  const handleWhisperVanish = (whisperId: string) => {
+    console.log('✨ Whisper vanished with animation:', whisperId);
+    // Remove from list after animation completes
+    setTimeout(() => {
+      setWhispers(prevWhispers => prevWhispers.filter(w => w._id !== whisperId));
+    }, 100);
+  };
 
   const updateResetTimer = () => {
     const now = new Date();
@@ -205,6 +303,14 @@ const WhisperWallScreen: React.FC = () => {
         },
         category: selectedCategory,
         backgroundAnimation: selectedAnimation,
+        vanishMode: vanishMode ? {
+          enabled: true,
+          duration: vanishDuration,
+          customMinutes: vanishDuration === 'custom' ? customVanishMinutes : undefined,
+        } : { enabled: false },
+        oneTime: {
+          enabled: oneTimePost,
+        },
       });
       console.log('📥 Create response:', response);
 
@@ -217,6 +323,10 @@ const WhisperWallScreen: React.FC = () => {
         setNewWhisperText('');
         setSelectedImage(null);
         setSelectedAnimation('none');
+        setVanishMode(false);
+        setVanishDuration('24hours');
+        setCustomVanishMinutes(60);
+        setOneTimePost(false);
         setShowCreateModal(false);
         
         // Reload whispers to show the new one
@@ -312,7 +422,7 @@ const WhisperWallScreen: React.FC = () => {
     console.log('🔍 Whispers:', whispers);
   }, [whispers]);
 
-  const styles = StyleSheet.create({
+  const styles = React.useMemo(() => StyleSheet.create({
     container: {
       flex: 1,
       backgroundColor: dailyTheme.backgroundColor,
@@ -367,14 +477,20 @@ const WhisperWallScreen: React.FC = () => {
       flexGrow: 1,
       justifyContent: 'center',
       alignItems: 'center',
-      paddingVertical: 20,
+      paddingVertical: 40,
     },
     modalContent: {
       width: SCREEN_WIDTH * 0.9,
+      maxHeight: SCREEN_HEIGHT * 0.85,
       backgroundColor: theme.colors.surface,
       borderRadius: 20,
+      overflow: 'hidden',
+    },
+    modalInnerScroll: {
+      maxHeight: SCREEN_HEIGHT * 0.85,
+    },
+    modalInnerContent: {
       padding: 24,
-      maxHeight: SCREEN_HEIGHT * 0.8,
     },
     modalTitle: {
       fontSize: 24,
@@ -480,6 +596,73 @@ const WhisperWallScreen: React.FC = () => {
     postButtonText: {
       color: '#fff',
     },
+    optionSection: {
+      marginBottom: 20,
+      backgroundColor: theme.colors.surface,
+      borderRadius: 12,
+      padding: 16,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    optionRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    optionLabel: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: theme.colors.text,
+      marginBottom: 4,
+    },
+    optionDescription: {
+      fontSize: 12,
+      color: theme.colors.textSecondary,
+    },
+    durationSelector: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+      marginTop: 12,
+    },
+    durationButton: {
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 8,
+      backgroundColor: theme.colors.background,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    durationButtonActive: {
+      backgroundColor: dailyTheme.accentColor,
+      borderColor: dailyTheme.accentColor,
+    },
+    durationButtonText: {
+      fontSize: 12,
+      color: theme.colors.text,
+    },
+    durationButtonTextActive: {
+      color: '#fff',
+      fontWeight: '600',
+    },
+    customDurationContainer: {
+      marginTop: 12,
+      padding: 12,
+      backgroundColor: theme.colors.background,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    customDurationLabel: {
+      fontSize: 14,
+      color: theme.colors.text,
+      marginBottom: 8,
+      fontWeight: '600',
+    },
+    slider: {
+      width: '100%',
+      height: 40,
+    },
     imagePickerContainer: {
       marginBottom: 20,
     },
@@ -568,7 +751,7 @@ const WhisperWallScreen: React.FC = () => {
       textAlign: 'center',
       fontStyle: 'italic',
     },
-  });
+  }), [theme, dailyTheme]);
 
   return (
     <View style={styles.container}>
@@ -612,6 +795,8 @@ const WhisperWallScreen: React.FC = () => {
               index={index}
               theme={dailyTheme}
               onPress={() => setSelectedWhisper(whisper)}
+              onVanish={() => handleWhisperVanish(whisper._id)}
+              shouldVanish={vanishingWhispers.has(whisper._id)}
             />
           ))
         )}
@@ -641,14 +826,15 @@ const WhisperWallScreen: React.FC = () => {
         >
           <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
             <View style={styles.modalOverlay}>
-              <TouchableWithoutFeedback onPress={() => {}}>
+              <View style={styles.modalContent}>
                 <ScrollView
-                  contentContainerStyle={styles.modalScrollContent}
+                  style={styles.modalInnerScroll}
+                  contentContainerStyle={styles.modalInnerContent}
                   keyboardShouldPersistTaps="handled"
-                  showsVerticalScrollIndicator={false}
+                  showsVerticalScrollIndicator={true}
+                  bounces={true}
                 >
-                  <View style={styles.modalContent}>
-                    <Text style={styles.modalTitle}>✨ Create Whisper</Text>
+                  <Text style={styles.modalTitle}>✨ Create Whisper</Text>
             
             <View style={styles.categorySelector}>
               {categories.map(cat => (
@@ -695,12 +881,74 @@ const WhisperWallScreen: React.FC = () => {
                       styles.animationButton,
                       selectedAnimation === anim.name && styles.animationButtonActive,
                     ]}
-                    onPress={() => setSelectedAnimation(anim.name)}
+                    onPress={() => setSelectedAnimation(anim.name as any)}
                   >
                     <Text>{anim.emoji}</Text>
                     <Text style={styles.animationButtonText}>{anim.label}</Text>
                   </TouchableOpacity>
                 ))}
+              </View>
+            </View>
+
+            {/* Vanish Mode */}
+            <View style={styles.optionSection}>
+              <View style={styles.optionRow}>
+                <View>
+                  <Text style={styles.optionLabel}>⏱️ Timed Post (Self-Destruct)</Text>
+                  <Text style={styles.optionDescription}>Auto-delete after set time</Text>
+                </View>
+                <Switch value={vanishMode} onValueChange={setVanishMode} />
+              </View>
+              {vanishMode && (
+                <>
+                  <View style={styles.durationSelector}>
+                    {['1hour', '6hours', '12hours', '24hours', 'custom'].map(duration => (
+                      <TouchableOpacity
+                        key={duration}
+                        style={[
+                          styles.durationButton,
+                          vanishDuration === duration && styles.durationButtonActive,
+                        ]}
+                        onPress={() => setVanishDuration(duration as any)}
+                      >
+                        <Text style={[
+                          styles.durationButtonText,
+                          vanishDuration === duration && styles.durationButtonTextActive,
+                        ]}>
+                          {duration}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  {vanishDuration === 'custom' && (
+                    <View style={styles.customDurationContainer}>
+                      <Text style={styles.customDurationLabel}>
+                        Custom: {customVanishMinutes} minutes ({Math.floor(customVanishMinutes / 60)}h {customVanishMinutes % 60}m)
+                      </Text>
+                      <Slider
+                        style={styles.slider}
+                        minimumValue={1}
+                        maximumValue={1440}
+                        step={1}
+                        value={customVanishMinutes}
+                        onValueChange={setCustomVanishMinutes}
+                        minimumTrackTintColor={theme.colors.primary}
+                        maximumTrackTintColor={theme.colors.border}
+                      />
+                    </View>
+                  )}
+                </>
+              )}
+            </View>
+
+            {/* One-Time Post */}
+            <View style={styles.optionSection}>
+              <View style={styles.optionRow}>
+                <View>
+                  <Text style={styles.optionLabel}>✨ One-Time View</Text>
+                  <Text style={styles.optionDescription}>Disappears after being viewed once</Text>
+                </View>
+                <Switch value={oneTimePost} onValueChange={setOneTimePost} />
               </View>
             </View>
 
@@ -744,9 +992,8 @@ const WhisperWallScreen: React.FC = () => {
                 </Text>
               </TouchableOpacity>
             </View>
-          </View>
                 </ScrollView>
-              </TouchableWithoutFeedback>
+              </View>
             </View>
           </TouchableWithoutFeedback>
         </KeyboardAvoidingView>
@@ -758,7 +1005,13 @@ const WhisperWallScreen: React.FC = () => {
         visible={!!selectedWhisper}
         whisper={selectedWhisper}
         theme={dailyTheme}
-        onClose={() => setSelectedWhisper(null)}
+        onClose={() => {
+          // If it was a one-time post, mark it for vanishing
+          if (selectedWhisper?.oneTime?.enabled) {
+            setVanishingWhispers(prev => new Set(prev).add(selectedWhisper._id));
+          }
+          setSelectedWhisper(null);
+        }}
         onReact={handleReact}
         onNext={() => {
           const currentIndex = whispers.findIndex(w => w._id === selectedWhisper?._id);

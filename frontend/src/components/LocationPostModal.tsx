@@ -7,10 +7,13 @@ import {
   TouchableOpacity,
   TextInput,
   ScrollView,
-  Animated,
+  Image,
+  Alert,
 } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as ImagePicker from 'expo-image-picker';
+import { Video, ResizeMode } from 'expo-av';
 
 interface LocationPostModalProps {
   visible: boolean;
@@ -19,7 +22,7 @@ interface LocationPostModalProps {
   location: { latitude: number; longitude: number } | null;
 }
 
-type PostType = 'text' | 'poll' | 'image' | 'secret' | 'question' | 'whisper' | 'rating' | 'audio';
+type PostType = 'text' | 'poll' | 'rating';
 type Duration = '1h' | '3h' | '6h' | '12h' | '24h' | 'permanent';
 type Radius = '0.5km' | '2km' | '5km' | 'citywide';
 type Category = 'Food' | 'Travel' | 'Sports' | 'Music' | 'Technology' | 'Art' | 'Fashion' | 'Gaming';
@@ -38,14 +41,13 @@ const LocationPostModal: React.FC<LocationPostModalProps> = ({
   const [rating, setRating] = useState(0);
   const [pollOptions, setPollOptions] = useState(['', '']);
   const [category, setCategory] = useState<Category>('Travel');
+  const [mediaUri, setMediaUri] = useState<string | null>(null);
+  const [mediaType, setMediaType] = useState<'image' | 'video' | null>(null);
 
   const postTypes = [
     { id: 'text', icon: '📝', label: 'Text', color: '#00D4AA' },
-    { id: 'poll', icon: '📊', label: 'Poll', color: '#A855F7' },
-    { id: 'question', icon: '❓', label: 'Ask Area', color: '#FF6B35' },
-    { id: 'secret', icon: '🎁', label: 'Secret Tip', color: '#FFD700' },
-    { id: 'whisper', icon: '👻', label: 'Whisper', color: '#FF69B4' },
     { id: 'rating', icon: '⭐', label: 'Review', color: '#FFA500' },
+    { id: 'poll', icon: '📊', label: 'Poll', color: '#A855F7' },
   ];
 
   const durations = [
@@ -66,7 +68,55 @@ const LocationPostModal: React.FC<LocationPostModalProps> = ({
 
   const categories: Category[] = ['Food', 'Travel', 'Sports', 'Music', 'Technology', 'Art', 'Fashion', 'Gaming'];
 
+  const pickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission needed', 'Please grant camera roll permissions');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      setMediaUri(result.assets[0].uri);
+      setMediaType('image');
+    }
+  };
+
+  const pickVideo = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission needed', 'Please grant camera roll permissions');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      allowsEditing: true,
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      setMediaUri(result.assets[0].uri);
+      setMediaType('video');
+    }
+  };
+
+  const removeMedia = () => {
+    setMediaUri(null);
+    setMediaType(null);
+  };
+
   const handleSubmit = () => {
+    if (!location) {
+      Alert.alert('Location Required', 'Please enable location services to post');
+      return;
+    }
+    
     const postData = {
       type: postType,
       content,
@@ -76,6 +126,8 @@ const LocationPostModal: React.FC<LocationPostModalProps> = ({
       rating: postType === 'rating' ? rating : undefined,
       pollOptions: postType === 'poll' ? pollOptions.filter(o => o.trim()) : undefined,
       location,
+      mediaUri,
+      mediaType,
     };
     onSubmit(postData);
     onClose();
@@ -268,6 +320,61 @@ const LocationPostModal: React.FC<LocationPostModalProps> = ({
       color: theme.colors.primary,
       fontWeight: '600',
     },
+    locationToggle: {
+      flexDirection: 'row',
+      gap: theme.spacing.sm,
+      marginBottom: theme.spacing.md,
+    },
+    locationToggleButton: {
+      flex: 1,
+      paddingVertical: theme.spacing.md,
+      paddingHorizontal: theme.spacing.sm,
+      borderRadius: 12,
+      borderWidth: 2,
+      alignItems: 'center',
+      flexDirection: 'row',
+      justifyContent: 'center',
+      gap: 6,
+    },
+    mediaContainer: {
+      marginTop: theme.spacing.md,
+      borderRadius: 12,
+      overflow: 'hidden',
+      position: 'relative',
+    },
+    mediaPreview: {
+      width: '100%',
+      height: 200,
+      borderRadius: 12,
+    },
+    removeMediaButton: {
+      position: 'absolute',
+      top: 8,
+      right: 8,
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: 'rgba(0, 0, 0, 0.7)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    mediaButtons: {
+      flexDirection: 'row',
+      gap: theme.spacing.sm,
+      marginTop: theme.spacing.md,
+    },
+    mediaButton: {
+      flex: 1,
+      paddingVertical: theme.spacing.md,
+      borderRadius: 12,
+      borderWidth: 2,
+      borderColor: theme.colors.border,
+      borderStyle: 'dashed',
+      alignItems: 'center',
+      flexDirection: 'row',
+      justifyContent: 'center',
+      gap: 6,
+    },
   });
 
   const renderPostTypeContent = () => {
@@ -349,15 +456,7 @@ const LocationPostModal: React.FC<LocationPostModalProps> = ({
           <View>
             <TextInput
               style={styles.textInput}
-              placeholder={
-                postType === 'secret'
-                  ? 'Share a hidden gem...'
-                  : postType === 'question'
-                  ? 'Ask the locals...'
-                  : postType === 'whisper'
-                  ? 'Whisper something...'
-                  : 'What\'s happening here?'
-              }
+              placeholder="What's happening here?"
               placeholderTextColor={theme.colors.textSecondary}
               value={content}
               onChangeText={setContent}
@@ -387,15 +486,6 @@ const LocationPostModal: React.FC<LocationPostModalProps> = ({
           </View>
 
           <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
-            {location && (
-              <View style={styles.locationInfo}>
-                <Text style={{ fontSize: 16 }}>📍</Text>
-                <Text style={styles.locationText}>
-                  Posting to your current location
-                </Text>
-              </View>
-            )}
-
             {/* Post Type Selection */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Post Type</Text>
@@ -430,6 +520,40 @@ const LocationPostModal: React.FC<LocationPostModalProps> = ({
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Content</Text>
               {renderPostTypeContent()}
+              
+              {/* Media Upload */}
+              {mediaUri ? (
+                <View style={styles.mediaContainer}>
+                  {mediaType === 'image' ? (
+                    <Image source={{ uri: mediaUri }} style={styles.mediaPreview} />
+                  ) : (
+                    <Video
+                      source={{ uri: mediaUri }}
+                      style={styles.mediaPreview}
+                      useNativeControls
+                      resizeMode={ResizeMode.CONTAIN}
+                    />
+                  )}
+                  <TouchableOpacity style={styles.removeMediaButton} onPress={removeMedia}>
+                    <Text style={{ color: '#FFF', fontSize: 18 }}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={styles.mediaButtons}>
+                  <TouchableOpacity style={styles.mediaButton} onPress={pickImage}>
+                    <Text style={{ fontSize: 20 }}>🖼️</Text>
+                    <Text style={{ color: theme.colors.textSecondary, fontSize: 13 }}>
+                      Add Image
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.mediaButton} onPress={pickVideo}>
+                    <Text style={{ fontSize: 20 }}>🎥</Text>
+                    <Text style={{ color: theme.colors.textSecondary, fontSize: 13 }}>
+                      Add Video
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
 
             {/* Duration */}
@@ -538,7 +662,11 @@ const LocationPostModal: React.FC<LocationPostModalProps> = ({
           <TouchableOpacity
             style={styles.submitButton}
             onPress={handleSubmit}
-            disabled={!content.trim()}
+            disabled={
+              !content.trim() && 
+              !(postType === 'poll' && pollOptions.filter(o => o.trim()).length >= 2) &&
+              !(postType === 'rating' && rating > 0)
+            }
           >
             <LinearGradient
               colors={[theme.colors.primary, theme.colors.secondary || theme.colors.primary]}

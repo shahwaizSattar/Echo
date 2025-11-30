@@ -9,6 +9,7 @@ import {
   Animated,
   Platform,
   StatusBar,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../../context/ThemeContext';
@@ -19,16 +20,22 @@ import * as Location from 'expo-location';
 import Toast from 'react-native-toast-message';
 import { locationAPI, postsAPI } from '../../services/api';
 import LocationPostModal from '../../components/LocationPostModal';
+import { Video, ResizeMode } from 'expo-av';
 
 const { width, height } = Dimensions.get('window');
 
 interface LocationPost {
   _id: string;
-  content: { text: string };
+  content: { 
+    text: string;
+    media?: Array<{ url: string; type: 'image' | 'video'; filename: string; originalName: string; size: number }>;
+  };
   distance: number;
   author: { username: string; avatar?: string };
   createdAt: string;
   category?: string;
+  locationName?: string;
+  rating?: number;
   poll?: {
     enabled: boolean;
     type: 'yesno' | 'emoji' | 'multi';
@@ -137,6 +144,10 @@ const CityRadarScreen: React.FC = () => {
       );
       
       if (response.success && response.data) {
+        console.log('📍 Loaded posts:', response.data.length);
+        console.log('📍 First post:', JSON.stringify(response.data[0], null, 2));
+        console.log('📍 First post locationName:', response.data[0]?.locationName);
+        console.log('📍 First post rating:', response.data[0]?.rating);
         setPosts(response.data);
       } else {
         // Fallback to mock data if API fails
@@ -493,6 +504,30 @@ const CityRadarScreen: React.FC = () => {
       fontWeight: '600',
       color: theme.colors.primary,
     },
+    postLocationName: {
+      fontSize: 12,
+      color: theme.colors.textSecondary,
+      marginTop: 4,
+      fontStyle: 'italic',
+    },
+    postMedia: {
+      width: '100%',
+      height: 200,
+      borderRadius: 12,
+      marginTop: theme.spacing.md,
+      marginBottom: theme.spacing.sm,
+    },
+    postRating: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: theme.spacing.sm,
+      paddingVertical: theme.spacing.xs,
+      gap: 6,
+    },
+    ratingStars: {
+      fontSize: 18,
+      letterSpacing: 2,
+    },
     pollContainer: {
       marginTop: theme.spacing.md,
       gap: theme.spacing.sm,
@@ -825,6 +860,29 @@ const CityRadarScreen: React.FC = () => {
         {filteredPosts.length > 0 ? (
           filteredPosts.map((post) => (
             <View key={post._id} style={styles.postCard}>
+              {/* Media Display - Outside at top */}
+              {post.content.media && post.content.media.length > 0 && (
+                <TouchableOpacity
+                  onPress={() => (navigation as any).navigate('PostDetail', { postId: post._id })}
+                  activeOpacity={0.9}
+                  style={{ marginBottom: theme.spacing.md }}
+                >
+                  {post.content.media[0].type === 'image' ? (
+                    <Image
+                      source={{ uri: post.content.media[0].url }}
+                      style={[styles.postMedia, { marginTop: 0, marginBottom: 0 }]}
+                    />
+                  ) : (
+                    <Video
+                      source={{ uri: post.content.media[0].url }}
+                      style={[styles.postMedia, { marginTop: 0, marginBottom: 0 }]}
+                      useNativeControls
+                      resizeMode={ResizeMode.CONTAIN}
+                    />
+                  )}
+                </TouchableOpacity>
+              )}
+
               <View style={styles.postHeader}>
                 <Text style={styles.postAuthor}>@{post.author.username}</Text>
                 <View
@@ -856,6 +914,18 @@ const CityRadarScreen: React.FC = () => {
                 </View>
               </View>
               
+              {/* Rating Display - Show prominently for reviews */}
+              {post.rating && post.rating > 0 && (
+                <View style={styles.postRating}>
+                  <Text style={styles.ratingStars}>
+                    {'⭐'.repeat(post.rating)}{'☆'.repeat(5 - post.rating)}
+                  </Text>
+                  <Text style={{ color: theme.colors.textSecondary, fontSize: 13, fontWeight: '600' }}>
+                    {post.rating}.0/5.0
+                  </Text>
+                </View>
+              )}
+
               <TouchableOpacity
                 onPress={() => (navigation as any).navigate('PostDetail', { postId: post._id })}
                 activeOpacity={0.7}
@@ -1002,6 +1072,27 @@ const CityRadarScreen: React.FC = () => {
                 isAnonymous: true,
               };
             }
+            
+            // Add rating if it's a review post
+            if (postData.type === 'rating' && postData.rating) {
+              payload.rating = postData.rating;
+            }
+
+            // Add media if provided (for now, just store the URI - in production you'd upload to server first)
+            if (postData.mediaUri && postData.mediaType) {
+              // In a real app, you would upload the media file to your server first
+              // and get back a URL. For now, we'll just include it in the content
+              payload.content.media = [{
+                url: postData.mediaUri, // In production, this would be the uploaded URL
+                type: postData.mediaType,
+                filename: `location_${Date.now()}.${postData.mediaUri.split('.').pop()}`,
+                originalName: `location_media.${postData.mediaUri.split('.').pop()}`,
+                size: 0,
+              }];
+              console.log('📸 Adding media to post:', payload.content.media[0]);
+            }
+
+            console.log('📤 Sending post payload:', JSON.stringify(payload, null, 2));
 
             // Create post with location
             const response = await postsAPI.createPost(payload);

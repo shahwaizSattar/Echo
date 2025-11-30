@@ -11,7 +11,7 @@ const getBaseURL = () => {
   if (!__DEV__) return 'https://your-production-url.com/api';
 
   // Development defaults per platform
-  const YOUR_COMPUTER_IP = '192.168.10.13'; // Update to your LAN IP for real device testing
+  const YOUR_COMPUTER_IP = '192.168.10.2'; // ✅ Updated to match current backend IP
 
   if (Platform.OS === 'web') {
     return `http://localhost:5000/api`;
@@ -57,12 +57,9 @@ const MAX_RETRIES = 3;
 // Request interceptor to add auth token
 api.interceptors.request.use(
   async (config) => {
-    // Skip auth token for WhisperWall requests (they use session IDs)
-    if (!config.url?.includes('/whisperwall')) {
-      const token = await AsyncStorage.getItem('authToken');
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-      }
+    const token = await AsyncStorage.getItem('authToken');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
   },
@@ -201,8 +198,19 @@ export const userAPI = {
     preferences?: string[];
     avatar?: string;
     settings?: any;
+    customAvatar?: any;
   }): Promise<ApiResponse> => {
     const response: AxiosResponse<ApiResponse> = await api.put('/user/profile', userData);
+    return response.data;
+  },
+
+  updateAvatar: async (customAvatar: any): Promise<ApiResponse> => {
+    const response: AxiosResponse<ApiResponse> = await api.put('/user/avatar', { customAvatar });
+    return response.data;
+  },
+
+  getAvatarPresets: async (): Promise<ApiResponse> => {
+    const response: AxiosResponse<ApiResponse> = await api.get('/user/avatar/presets');
     return response.data;
   },
 
@@ -291,27 +299,27 @@ export const userAPI = {
   },
 
   muteUser: async (userId: string): Promise<ApiResponse> => {
-    const response: AxiosResponse<ApiResponse> = await api.post(`/users/${userId}/mute`);
+    const response: AxiosResponse<ApiResponse> = await api.post(`/user/${userId}/mute`);
     return response.data;
   },
 
   unmuteUser: async (userId: string): Promise<ApiResponse> => {
-    const response: AxiosResponse<ApiResponse> = await api.delete(`/users/${userId}/mute`);
+    const response: AxiosResponse<ApiResponse> = await api.delete(`/user/${userId}/mute`);
     return response.data;
   },
 
   blockUser: async (userId: string): Promise<ApiResponse> => {
-    const response: AxiosResponse<ApiResponse> = await api.post(`/users/${userId}/block`);
+    const response: AxiosResponse<ApiResponse> = await api.post(`/user/${userId}/block`);
     return response.data;
   },
 
   unblockUser: async (userId: string): Promise<ApiResponse> => {
-    const response: AxiosResponse<ApiResponse> = await api.delete(`/users/${userId}/block`);
+    const response: AxiosResponse<ApiResponse> = await api.delete(`/user/${userId}/block`);
     return response.data;
   },
 
   getBlockedUsers: async (): Promise<ApiResponse> => {
-    const response: AxiosResponse<ApiResponse> = await api.get('/users/blocked');
+    const response: AxiosResponse<ApiResponse> = await api.get('/user/blocked');
     return response.data;
   },
 
@@ -507,6 +515,10 @@ export const postsAPI = {
 
 // Chat API
 export const chatAPI = {
+  getUnreadCount: async (): Promise<any> => {
+    const response: AxiosResponse<any> = await api.get('/chat/unread-count');
+    return response.data;
+  },
   getConversations: async (): Promise<any> => {
     const response: AxiosResponse<any> = await api.get('/chat/conversations');
     return response.data;
@@ -562,6 +574,14 @@ export const whisperWallAPI = {
     category: string;
     tags?: string[];
     backgroundAnimation?: 'none' | 'rain' | 'neon' | 'fire' | 'snow' | 'hearts' | 'mist';
+    vanishMode?: {
+      enabled: boolean;
+      duration?: '1hour' | '6hours' | '12hours' | '24hours' | '1day' | '1week' | 'custom';
+      customMinutes?: number;
+    };
+    oneTime?: {
+      enabled: boolean;
+    };
   }): Promise<ApiResponse> => {
     const response: AxiosResponse<ApiResponse> = await api.post('/whisperwall', postData);
     return response.data;
@@ -625,6 +645,43 @@ export const whisperWallAPI = {
 
   getMoodWeather: async (): Promise<ApiResponse> => {
     const response: AxiosResponse<ApiResponse> = await api.get('/whisperwall/mood-weather');
+    return response.data;
+  },
+
+  markWhisperViewed: async (postId: string): Promise<ApiResponse> => {
+    const response: AxiosResponse<ApiResponse> = await api.post(`/whisperwall/${postId}/mark-viewed`);
+    return response.data;
+  },
+
+  getUserWhispers: async (
+    userId: string,
+    page: number = 1,
+    limit: number = 20
+  ): Promise<any> => {
+    const response: AxiosResponse<any> = await api.get(
+      `/whisperwall/user/${userId}?page=${page}&limit=${limit}`
+    );
+    return response.data;
+  },
+
+  editWhisper: async (
+    postId: string,
+    updateData: {
+      content?: { text: string; media?: any[] };
+      category?: string;
+      tags?: string[];
+      backgroundAnimation?: string;
+    }
+  ): Promise<ApiResponse> => {
+    const response: AxiosResponse<ApiResponse> = await api.put(
+      `/whisperwall/${postId}`,
+      updateData
+    );
+    return response.data;
+  },
+
+  deleteWhisper: async (postId: string): Promise<ApiResponse> => {
+    const response: AxiosResponse<ApiResponse> = await api.delete(`/whisperwall/${postId}`);
     return response.data;
   },
 };

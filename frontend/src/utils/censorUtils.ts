@@ -75,17 +75,9 @@ const PROFANITY_LIST = [
 ];
 
 export const censorText = (text: string): string => {
-  if (!text) return text;
-
-  let censoredText = text;
-
-  PROFANITY_LIST.forEach((word) => {
-    const regex = new RegExp(`\\b${word}\\b`, 'gi');
-    const replacement = '*'.repeat(word.length);
-    censoredText = censoredText.replace(regex, replacement);
-  });
-
-  return censoredText;
+  // No censoring - moderation is handled by ModeratedContent component
+  // which shows particle animation for flagged content
+  return text || '';
 };
 
 export default censorText;

@@ -57,12 +57,15 @@ const BlockedUsersScreen: React.FC = () => {
       setUnblockingUserId(userId);
       await userAPI.unblockUser(userId);
       
+      // Remove from blocked list
       setBlockedUsers(prev => prev.filter(u => u._id !== userId));
       
+      // Show success message
       Toast.show({
         type: 'success',
-        text1: 'User unblocked',
-        text2: `@${username} has been unblocked`,
+        text1: 'User Unblocked',
+        text2: `@${username} unblocked. Pull to refresh your feed to see their posts.`,
+        visibilityTime: 5000,
       });
     } catch (error) {
       console.error('Error unblocking user:', error);

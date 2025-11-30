@@ -52,7 +52,7 @@ router.put('/profile', authenticateToken, [
       });
     }
 
-    const { bio, preferences, avatar, settings } = req.body;
+    const { bio, preferences, avatar, settings, customAvatar } = req.body;
     const userId = req.user._id;
 
     const updateData = {};
@@ -60,6 +60,7 @@ router.put('/profile', authenticateToken, [
     if (preferences) updateData.preferences = preferences;
     if (avatar) updateData.avatar = avatar;
     if (settings) updateData.settings = { ...req.user.settings, ...settings };
+    if (customAvatar) updateData.customAvatar = customAvatar;
 
     const user = await User.findByIdAndUpdate(
       userId,
@@ -75,6 +76,71 @@ router.put('/profile', authenticateToken, [
 
   } catch (error) {
     console.error('Update profile error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+});
+
+// PUT /api/user/avatar - Update custom avatar
+router.put('/avatar', authenticateToken, async (req, res) => {
+  try {
+    const { customAvatar } = req.body;
+    const userId = req.user._id;
+
+    if (!customAvatar) {
+      return res.status(400).json({
+        success: false,
+        message: 'Avatar configuration is required'
+      });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { customAvatar },
+      { new: true, runValidators: true }
+    ).select('-password');
+
+    res.json({
+      success: true,
+      message: 'Avatar updated successfully',
+      user
+    });
+
+  } catch (error) {
+    console.error('Update avatar error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+});
+
+// GET /api/avatar/presets - Get avatar customization presets
+router.get('/avatar/presets', async (req, res) => {
+  try {
+    const presets = {
+      masks: ['cloth', 'medical', 'matte', 'festival', 'gradient'],
+      hair: ['braids', 'curly', 'bun', 'fade', 'straight', 'shoulder', 'side-fringe', 'middle-part'],
+      outfits: ['hoodie', 'oversized', 'trench', 'office', 'tee', 'cardigan', 'jacket'],
+      themes: ['nebula-drift', 'urban-dawn', 'midnight-frost', 'pastel-air', 'noir-shadow', 'velvet-dusk', 'misty-garden', 'arctic-whisper'],
+      colors: {
+        neutrals: ['#F5F5F0', '#E8E6E1', '#D4D2CD', '#8B8985', '#6B6965'],
+        pastels: ['#E8D5E8', '#D5E8E8', '#E8E8D5', '#E8D5D5', '#D5D5E8'],
+        muted: ['#C4B5A0', '#A0B5C4', '#B5A0C4', '#C4A0A0', '#A0C4A0'],
+        darks: ['#2D2D2D', '#3A3A3A', '#4A4A4A', '#5A5A5A'],
+        accents: ['#9B8B7E', '#7E8B9B', '#8B7E9B', '#9B7E7E', '#7E9B8B'],
+      }
+    };
+
+    res.json({
+      success: true,
+      presets
+    });
+
+  } catch (error) {
+    console.error('Get avatar presets error:', error);
     res.status(500).json({
       success: false,
       message: 'Server error'
@@ -272,10 +338,11 @@ router.get('/echo-trails/:userId', authenticateToken, async (req, res) => {
   }
 });
 
-// GET /api/user/search - Search users
-router.get('/search', async (req, res) => {
+// GET /api/user/search - Search users (searches entire database, excludes blocked users)
+router.get('/search', authenticateToken, async (req, res) => {
   try {
     const { q, category } = req.query;
+    const currentUserId = req.user._id;
     
     if (!q || q.length < 1) {
       return res.status(400).json({
@@ -284,7 +351,26 @@ router.get('/search', async (req, res) => {
       });
     }
 
+    // Get current user's blocked list
+    const currentUser = await User.findById(currentUserId);
+    const blockedByMe = currentUser.blockedUsers || [];
+    
+    // Get users who have blocked the current user (bidirectional)
+    const usersWhoBlockedMe = await User.find({ 
+      blockedUsers: currentUserId 
+    }).select('_id');
+    const blockedMeIds = usersWhoBlockedMe.map(u => u._id);
+    
+    // Combine both lists
+    const allBlockedUsers = [...blockedByMe, ...blockedMeIds];
+
+    console.log(`🔍 User search: query="${q}", blocked count=${allBlockedUsers.length}`);
+
     const searchQuery = {
+      _id: { 
+        $ne: currentUserId, // Exclude self
+        $nin: allBlockedUsers // Exclude blocked users (bidirectional)
+      },
       $or: [
         { username: { $regex: q, $options: 'i' } },
         { bio: { $regex: q, $options: 'i' } }
@@ -297,8 +383,10 @@ router.get('/search', async (req, res) => {
 
     const users = await User.find(searchQuery)
       .select('username avatar bio preferences stats badges')
-      .limit(20)
+      .limit(50) // Increased limit for better results
       .sort({ 'stats.karmaScore': -1 });
+
+    console.log(`🔍 User search results: found ${users.length} users`);
 
     res.json({
       success: true,
@@ -516,7 +604,7 @@ router.post('/notifications/read', authenticateToken, async (req, res) => {
   }
 });
 
-// POST /api/users/:userId/mute - Mute a user
+// POST /api/user/:userId/mute - Mute a user
 router.post('/:userId/mute', authenticateToken, async (req, res) => {
   try {
     const { userId } = req.params;
@@ -539,10 +627,13 @@ router.post('/:userId/mute', authenticateToken, async (req, res) => {
 
     const currentUser = await User.findById(currentUserId);
     
+    // If already muted, return success (idempotent)
     if (currentUser.mutedUsers.includes(userId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'User already muted'
+      return res.json({
+        success: true,
+        message: `${targetUser.username} is already muted`,
+        mutedUserId: userId,
+        alreadyMuted: true
       });
     }
 
@@ -596,7 +687,7 @@ router.delete('/:userId/mute', authenticateToken, async (req, res) => {
   }
 });
 
-// POST /api/users/:userId/block - Block a user
+// POST /api/user/:userId/block - Block a user
 router.post('/:userId/block', authenticateToken, async (req, res) => {
   try {
     const { userId } = req.params;
@@ -619,10 +710,13 @@ router.post('/:userId/block', authenticateToken, async (req, res) => {
 
     const currentUser = await User.findById(currentUserId);
     
+    // If already blocked, return success (idempotent)
     if (currentUser.blockedUsers.includes(userId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'User already blocked'
+      return res.json({
+        success: true,
+        message: `${targetUser.username} is already blocked`,
+        blockedUserId: userId,
+        alreadyBlocked: true
       });
     }
 

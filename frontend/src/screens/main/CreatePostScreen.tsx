@@ -25,12 +25,170 @@ import { Audio } from 'expo-av';
 const CreatePostScreen: React.FC = () => {
   const { theme } = useTheme();
   const navigation = useNavigation();
+  
+  // Create dynamic styles based on theme
+  const dynamicStyles = React.useMemo(() => StyleSheet.create({
+    container: { flex: 1, backgroundColor: theme.colors.background },
+    header: { 
+      flexDirection: 'row', 
+      justifyContent: 'space-between', 
+      alignItems: 'center', 
+      padding: 16, 
+      backgroundColor: theme.colors.surface, 
+      borderBottomWidth: 1, 
+      borderBottomColor: theme.colors.border 
+    },
+    title: { fontSize: 20, fontWeight: '600', color: theme.colors.text },
+    postButton: { backgroundColor: theme.colors.primary, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 },
+    postButtonDisabled: { opacity: 0.5 },
+    postButtonText: { color: theme.colors.textInverse, fontWeight: '600' },
+    content: { flex: 1, padding: 16 },
+    textInput: { 
+      backgroundColor: theme.colors.surface, 
+      borderRadius: 8, 
+      padding: 16, 
+      fontSize: 16, 
+      color: theme.colors.text, 
+      minHeight: 150, 
+      marginBottom: 8, 
+      borderWidth: 1, 
+      borderColor: theme.colors.border, 
+      textAlignVertical: 'top' 
+    },
+    characterCount: { textAlign: 'right', color: theme.colors.textSecondary, fontSize: 12, marginBottom: 24 },
+    section: { marginBottom: 24 },
+    sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+    sectionTitle: { fontSize: 18, fontWeight: '600', color: theme.colors.text, marginBottom: 8 },
+    sectionDescription: { fontSize: 14, color: theme.colors.textSecondary, marginBottom: 12, lineHeight: 20 },
+    addMediaButton: { backgroundColor: theme.colors.card, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6 },
+    addMediaButtonText: { color: theme.colors.primary, fontSize: 14, fontWeight: '500' },
+    mediaItem: { position: 'relative', marginRight: 12 },
+    mediaPreviewImage: { width: 80, height: 80, borderRadius: 8, backgroundColor: theme.colors.card },
+    removeMediaButton: { position: 'absolute', top: -8, right: -8, backgroundColor: theme.colors.error, borderRadius: 12, width: 24, height: 24, justifyContent: 'center', alignItems: 'center' },
+    removeMediaButtonText: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
+    categoryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+    categoryItem: { 
+      backgroundColor: theme.colors.surface, 
+      borderRadius: 8, 
+      padding: 12, 
+      alignItems: 'center', 
+      minWidth: 70, 
+      borderWidth: 1, 
+      borderColor: theme.colors.border 
+    },
+    categoryItemSelected: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
+    categoryIcon: { fontSize: 24, marginBottom: 4 },
+    categoryName: { color: theme.colors.text, fontSize: 12, fontWeight: '500' },
+    
+    // Voice note styles
+    voiceControls: { marginTop: 8 },
+    voiceButton: { backgroundColor: theme.colors.card, padding: 16, borderRadius: 8, alignItems: 'center' },
+    voiceButtonText: { color: theme.colors.text, fontSize: 16, fontWeight: '600' },
+    recordingContainer: { 
+      flexDirection: 'row', 
+      alignItems: 'center', 
+      backgroundColor: theme.colors.surface, 
+      padding: 16, 
+      borderRadius: 12,
+      gap: 12
+    },
+    recordingWaveform: { 
+      flex: 1, 
+      flexDirection: 'row', 
+      alignItems: 'center', 
+      gap: 12 
+    },
+    recordingDot: { 
+      width: 12, 
+      height: 12, 
+      borderRadius: 6, 
+      backgroundColor: theme.colors.error 
+    },
+    recordingBars: { 
+      flex: 1, 
+      flexDirection: 'row', 
+      alignItems: 'center', 
+      height: 30, 
+      gap: 2 
+    },
+    recordingBar: { 
+      width: 3, 
+      backgroundColor: theme.colors.primary, 
+      borderRadius: 2 
+    },
+    recordingTime: { 
+      color: theme.colors.text, 
+      fontSize: 14, 
+      fontWeight: '600',
+      minWidth: 45
+    },
+    stopButton: { 
+      width: 48, 
+      height: 48, 
+      borderRadius: 24, 
+      backgroundColor: theme.colors.error, 
+      justifyContent: 'center', 
+      alignItems: 'center' 
+    },
+    stopButtonText: { 
+      color: '#fff', 
+      fontSize: 24 
+    },
+    voiceNotePreview: { backgroundColor: theme.colors.surface, padding: 16, borderRadius: 12, borderWidth: 1, borderColor: theme.colors.border },
+    voiceNoteContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 16, backgroundColor: theme.colors.card, padding: 12, borderRadius: 20 },
+    playButtonCircle: { width: 48, height: 48, borderRadius: 24, backgroundColor: theme.colors.primary, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+    playButtonIcon: { color: theme.colors.textInverse, fontSize: 20, marginLeft: 2 },
+    voiceWaveformContainer: { flex: 1, justifyContent: 'center' },
+    waveformBars: { flexDirection: 'row', alignItems: 'center', height: 30, gap: 2, marginBottom: 4 },
+    waveformBar: { width: 3, borderRadius: 2, opacity: 0.7 },
+    voiceNoteFooter: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    voiceNoteDuration: { color: theme.colors.textSecondary, fontSize: 12, fontWeight: '500' },
+    voiceEffectPreview: { fontSize: 11, color: theme.colors.primary, fontWeight: '600', textTransform: 'capitalize' },
+    voiceEffectRow: { marginBottom: 12 },
+    voiceEffectLabel: { color: theme.colors.textSecondary, fontSize: 13, marginBottom: 8, fontWeight: '500' },
+    effectScroll: { flexGrow: 0 },
+    effectButton: { backgroundColor: theme.colors.card, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, marginRight: 8, borderWidth: 1, borderColor: theme.colors.border },
+    effectButtonSelected: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
+    effectButtonText: { color: theme.colors.textSecondary, fontSize: 13, fontWeight: '500' },
+    effectButtonTextSelected: { color: theme.colors.textInverse, fontWeight: '600' },
+    removeVoiceButton: { backgroundColor: theme.colors.error, padding: 12, borderRadius: 8, alignItems: 'center' },
+    removeVoiceButtonText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+    
+    // Poll styles
+    pollContainer: { backgroundColor: theme.colors.surface, padding: 16, borderRadius: 8, borderWidth: 1, borderColor: theme.colors.border },
+    pollQuestionInput: { backgroundColor: theme.colors.card, color: theme.colors.text, padding: 12, borderRadius: 6, marginBottom: 12, fontSize: 16 },
+    pollTypeRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+    pollTypeButton: { flex: 1, backgroundColor: theme.colors.card, padding: 10, borderRadius: 6, alignItems: 'center' },
+    pollTypeButtonSelected: { backgroundColor: theme.colors.primary },
+    pollTypeButtonText: { color: theme.colors.text, fontSize: 14, textTransform: 'capitalize' },
+    pollOptionRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 8 },
+    pollEmojiInput: { backgroundColor: theme.colors.card, color: theme.colors.text, padding: 10, borderRadius: 6, width: 50, textAlign: 'center', fontSize: 18 },
+    pollOptionInput: { flex: 1, backgroundColor: theme.colors.card, color: theme.colors.text, padding: 10, borderRadius: 6, fontSize: 14 },
+    removePollOption: { color: theme.colors.error, fontSize: 20, fontWeight: 'bold', paddingHorizontal: 8 },
+    addPollOptionButton: { backgroundColor: theme.colors.card, padding: 10, borderRadius: 6, alignItems: 'center', marginTop: 8 },
+    addPollOptionText: { color: theme.colors.primary, fontSize: 14, fontWeight: '600' },
+    pollSettingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: theme.colors.border },
+    pollSettingLabel: { color: theme.colors.text, fontSize: 14, flex: 1 },
+    
+    // Vanish mode styles
+    vanishModeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+    vanishModeLabel: { color: theme.colors.text, fontSize: 16 },
+    vanishOptions: { backgroundColor: theme.colors.surface, padding: 16, borderRadius: 8, borderWidth: 1, borderColor: theme.colors.border },
+    durationGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
+    durationButton: { backgroundColor: theme.colors.card, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 6 },
+    durationButtonSelected: { backgroundColor: theme.colors.primary },
+    durationButtonText: { color: theme.colors.text, fontSize: 14 },
+    customTimerContainer: { marginTop: 12 },
+    customTimerLabel: { color: theme.colors.text, fontSize: 14, marginBottom: 8 },
+    slider: { width: '100%', height: 40 },
+    
+    // Lock styles
+    lockRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8 },
+    lockLabel: { color: theme.colors.text, fontSize: 16 },
+  }), [theme]);
   const [postText, setPostText] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [visibility, setVisibility] = useState<'normal' | 'disguise'>('normal');
-  const [vanishMode, setVanishMode] = useState(false);
-  const [vanishDuration, setVanishDuration] = useState<'1hour' | '6hours' | '12hours' | '24hours' | '1day' | '1week' | 'custom'>('1day');
-  const [customVanishMinutes, setCustomVanishMinutes] = useState(60);
   const [isCreating, setIsCreating] = useState(false);
   const [selectedMedia, setSelectedMedia] = useState<
     { uri: string; type: string; name: string; mediaType: 'photo' | 'video' | 'audio' }[]
@@ -59,10 +217,6 @@ const CreatePostScreen: React.FC = () => {
   // Interaction locks
   const [commentsLocked, setCommentsLocked] = useState(false);
   const [reactionsLocked, setReactionsLocked] = useState(false);
-  
-  // One-time post
-  const [oneTimePost, setOneTimePost] = useState(false);
-
   const categories = [
     { id: 'Gaming', name: 'Gaming', icon: '🎮' },
     { id: 'Education', name: 'Education', icon: '📚' },
@@ -457,11 +611,6 @@ const CreatePostScreen: React.FC = () => {
       },
       category: selectedCategory,
       visibility,
-      vanishMode: vanishMode ? { 
-        enabled: true, 
-        duration: vanishDuration,
-        customMinutes: vanishDuration === 'custom' ? customVanishMinutes : undefined
-      } : { enabled: false },
       poll: pollEnabled ? {
         enabled: true,
         type: pollType,
@@ -478,9 +627,6 @@ const CreatePostScreen: React.FC = () => {
       interactions: {
         commentsLocked,
         reactionsLocked
-      },
-      oneTime: {
-        enabled: oneTimePost
       }
     };
 
@@ -505,40 +651,40 @@ const CreatePostScreen: React.FC = () => {
   };
 
   return (
-    <SafeAreaView edges={['top']} style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <SafeAreaView edges={['top']} style={[dynamicStyles.container, { backgroundColor: theme.colors.background }]}>
       <StatusBar barStyle={theme.dark ? 'light-content' : 'dark-content'} />
-    <View style={styles.container}>
-      <View style={styles.header}>
+    <View style={dynamicStyles.container}>
+      <View style={dynamicStyles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={{ fontSize: 16, color: '#888' }}>Cancel</Text>
+          <Text style={{ fontSize: 16, color: theme.colors.textSecondary }}>Cancel</Text>
         </TouchableOpacity>
-        <Text style={styles.title}>Create Post</Text>
+        <Text style={dynamicStyles.title}>Create Post</Text>
         <TouchableOpacity
-          style={[styles.postButton, (!postText.trim() && selectedMedia.length === 0 && !voiceNote && !pollEnabled) || !selectedCategory ? styles.postButtonDisabled : {}]}
+          style={[dynamicStyles.postButton, (!postText.trim() && selectedMedia.length === 0 && !voiceNote && !pollEnabled) || !selectedCategory ? dynamicStyles.postButtonDisabled : {}]}
           onPress={handlePost}
           disabled={(!postText.trim() && selectedMedia.length === 0 && !voiceNote && !pollEnabled) || !selectedCategory || isCreating || isUploadingMedia}
         >
-          <Text style={styles.postButtonText}>{isCreating ? 'Creating...' : 'Post'}</Text>
+          <Text style={dynamicStyles.postButtonText}>{isCreating ? 'Creating...' : 'Post'}</Text>
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.content}>
+      <ScrollView style={dynamicStyles.content}>
         <TextInput
-          style={styles.textInput}
+          style={dynamicStyles.textInput}
           placeholder="What's on your mind?"
-          placeholderTextColor="#888"
+          placeholderTextColor={theme.colors.textSecondary}
           value={postText}
           onChangeText={setPostText}
           multiline
           maxLength={2000}
         />
-        <Text style={styles.characterCount}>{postText.length}/2000</Text>
+        <Text style={dynamicStyles.characterCount}>{postText.length}/2000</Text>
 
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Media</Text>
-            <TouchableOpacity style={styles.addMediaButton} onPress={selectMedia} disabled={selectedMedia.length >= 5}>
-              <Text style={styles.addMediaButtonText}>📎 Add Media ({selectedMedia.length}/5)</Text>
+        <View style={dynamicStyles.section}>
+          <View style={dynamicStyles.sectionHeader}>
+            <Text style={dynamicStyles.sectionTitle}>Media</Text>
+            <TouchableOpacity style={dynamicStyles.addMediaButton} onPress={selectMedia} disabled={selectedMedia.length >= 5}>
+              <Text style={dynamicStyles.addMediaButtonText}>📎 Add Media ({selectedMedia.length}/5)</Text>
             </TouchableOpacity>
           </View>
 
@@ -548,16 +694,16 @@ const CreatePostScreen: React.FC = () => {
               data={selectedMedia}
               keyExtractor={(_, index) => index.toString()}
               renderItem={({ item, index }) => (
-                <View style={styles.mediaItem}>
+                <View style={dynamicStyles.mediaItem}>
                   {item.mediaType === 'photo' ? (
-                    <Image source={{ uri: item.uri }} style={styles.mediaPreviewImage} />
+                    <Image source={{ uri: item.uri }} style={dynamicStyles.mediaPreviewImage} />
                   ) : (
-                    <View style={[styles.mediaPreviewImage, { backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }]}>
-                      <Text style={{ color: '#fff' }}>Video</Text>
+                    <View style={[dynamicStyles.mediaPreviewImage, { backgroundColor: theme.colors.card, justifyContent: 'center', alignItems: 'center' }]}>
+                      <Text style={{ color: theme.colors.text }}>Video</Text>
                     </View>
                   )}
-                  <TouchableOpacity style={styles.removeMediaButton} onPress={() => removeMedia(index)}>
-                    <Text style={styles.removeMediaButtonText}>✕</Text>
+                  <TouchableOpacity style={dynamicStyles.removeMediaButton} onPress={() => removeMedia(index)}>
+                    <Text style={dynamicStyles.removeMediaButtonText}>✕</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -565,27 +711,27 @@ const CreatePostScreen: React.FC = () => {
           )}
         </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Voice Note</Text>
+        <View style={dynamicStyles.section}>
+          <Text style={dynamicStyles.sectionTitle}>Voice Note</Text>
           {!voiceNote ? (
-            <View style={styles.voiceControls}>
+            <View style={dynamicStyles.voiceControls}>
               {!isRecording ? (
                 <TouchableOpacity 
-                  style={styles.voiceButton} 
+                  style={dynamicStyles.voiceButton} 
                   onPress={startRecording}
                 >
-                  <Text style={styles.voiceButtonText}>🎤 Record Voice Note</Text>
+                  <Text style={dynamicStyles.voiceButtonText}>🎤 Record Voice Note</Text>
                 </TouchableOpacity>
               ) : (
-                <View style={styles.recordingContainer}>
-                  <View style={styles.recordingWaveform}>
-                    <View style={styles.recordingDot} />
-                    <View style={styles.recordingBars}>
+                <View style={dynamicStyles.recordingContainer}>
+                  <View style={dynamicStyles.recordingWaveform}>
+                    <View style={dynamicStyles.recordingDot} />
+                    <View style={dynamicStyles.recordingBars}>
                       {[...Array(30)].map((_, i) => (
                         <View 
                           key={i} 
                           style={[
-                            styles.recordingBar,
+                            dynamicStyles.recordingBar,
                             { 
                               height: 10 + Math.sin((recordingDuration * 5 + i) * 0.5) * 15,
                               opacity: 0.3 + Math.sin((recordingDuration * 3 + i) * 0.3) * 0.5
@@ -594,65 +740,65 @@ const CreatePostScreen: React.FC = () => {
                         />
                       ))}
                     </View>
-                    <Text style={styles.recordingTime}>{formatDuration(recordingDuration)}</Text>
+                    <Text style={dynamicStyles.recordingTime}>{formatDuration(recordingDuration)}</Text>
                   </View>
                   <TouchableOpacity 
-                    style={styles.stopButton} 
+                    style={dynamicStyles.stopButton} 
                     onPress={stopRecording}
                   >
-                    <Text style={styles.stopButtonText}>⏹</Text>
+                    <Text style={dynamicStyles.stopButtonText}>⏹</Text>
                   </TouchableOpacity>
                 </View>
               )}
             </View>
           ) : (
-            <View style={styles.voiceNotePreview}>
-              <View style={styles.voiceNoteContainer}>
+            <View style={dynamicStyles.voiceNotePreview}>
+              <View style={dynamicStyles.voiceNoteContainer}>
                 <TouchableOpacity 
-                  style={styles.playButtonCircle} 
+                  style={dynamicStyles.playButtonCircle} 
                   onPress={playVoiceNote}
                 >
-                  <Text style={styles.playButtonIcon}>
+                  <Text style={dynamicStyles.playButtonIcon}>
                     {isPlaying ? '⏸' : '▶'}
                   </Text>
                 </TouchableOpacity>
                 
-                <View style={styles.voiceWaveformContainer}>
-                  <View style={styles.waveformBars}>
+                <View style={dynamicStyles.voiceWaveformContainer}>
+                  <View style={dynamicStyles.waveformBars}>
                     {[...Array(20)].map((_, i) => (
                       <View 
                         key={i} 
                         style={[
-                          styles.waveformBar,
+                          dynamicStyles.waveformBar,
                           { 
                             height: Math.random() * 20 + 10,
-                            backgroundColor: isPlaying ? '#00D4AA' : '#555'
+                            backgroundColor: isPlaying ? theme.colors.primary : theme.colors.textSecondary
                           }
                         ]} 
                       />
                     ))}
                   </View>
-                  <View style={styles.voiceNoteFooter}>
-                    <Text style={styles.voiceNoteDuration}>
+                  <View style={dynamicStyles.voiceNoteFooter}>
+                    <Text style={dynamicStyles.voiceNoteDuration}>
                       {voiceNote.duration > 0 ? formatDuration(voiceNote.duration) : '0:00'}
                     </Text>
                     {voiceEffect && voiceEffect !== 'none' && (
-                      <Text style={styles.voiceEffectPreview}>• {voiceEffect}</Text>
+                      <Text style={dynamicStyles.voiceEffectPreview}>• {voiceEffect}</Text>
                     )}
                   </View>
                 </View>
               </View>
 
-              <View style={styles.voiceEffectRow}>
-                <Text style={styles.voiceEffectLabel}>Voice Effect:</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.effectScroll}>
+              <View style={dynamicStyles.voiceEffectRow}>
+                <Text style={dynamicStyles.voiceEffectLabel}>Voice Effect:</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={dynamicStyles.effectScroll}>
                   {['none', 'deep', 'robot', 'soft', 'glitchy', 'girly', 'boyish'].map(effect => (
                     <TouchableOpacity
                       key={effect}
-                      style={[styles.effectButton, voiceEffect === effect && styles.effectButtonSelected]}
+                      style={[dynamicStyles.effectButton, voiceEffect === effect && dynamicStyles.effectButtonSelected]}
                       onPress={() => setVoiceEffect(effect as any)}
                     >
-                      <Text style={[styles.effectButtonText, voiceEffect === effect && styles.effectButtonTextSelected]}>
+                      <Text style={[dynamicStyles.effectButtonText, voiceEffect === effect && dynamicStyles.effectButtonTextSelected]}>
                         {effect.charAt(0).toUpperCase() + effect.slice(1)}
                       </Text>
                     </TouchableOpacity>
@@ -660,147 +806,98 @@ const CreatePostScreen: React.FC = () => {
                 </ScrollView>
               </View>
               
-              <TouchableOpacity style={styles.removeVoiceButton} onPress={removeVoiceNote}>
-                <Text style={styles.removeVoiceButtonText}>✕ Remove Voice Note</Text>
+              <TouchableOpacity style={dynamicStyles.removeVoiceButton} onPress={removeVoiceNote}>
+                <Text style={dynamicStyles.removeVoiceButtonText}>✕ Remove Voice Note</Text>
               </TouchableOpacity>
             </View>
           )}
         </View>
 
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Poll</Text>
+        <View style={dynamicStyles.section}>
+          <View style={dynamicStyles.sectionHeader}>
+            <Text style={dynamicStyles.sectionTitle}>Poll</Text>
             <Switch value={pollEnabled} onValueChange={setPollEnabled} />
           </View>
           {pollEnabled && (
-            <View style={styles.pollContainer}>
+            <View style={dynamicStyles.pollContainer}>
               <TextInput
-                style={styles.pollQuestionInput}
+                style={dynamicStyles.pollQuestionInput}
                 placeholder="Poll question..."
-                placeholderTextColor="#888"
+                placeholderTextColor={theme.colors.textSecondary}
                 value={pollQuestion}
                 onChangeText={setPollQuestion}
                 maxLength={200}
               />
-              <View style={styles.pollTypeRow}>
+              <View style={dynamicStyles.pollTypeRow}>
                 {['yesno', 'emoji', 'multi'].map(type => (
                   <TouchableOpacity
                     key={type}
-                    style={[styles.pollTypeButton, pollType === type && styles.pollTypeButtonSelected]}
+                    style={[dynamicStyles.pollTypeButton, pollType === type && dynamicStyles.pollTypeButtonSelected]}
                     onPress={() => setPollType(type as any)}
                   >
-                    <Text style={styles.pollTypeButtonText}>{type}</Text>
+                    <Text style={dynamicStyles.pollTypeButtonText}>{type}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
               {pollOptions.map((option, index) => (
-                <View key={index} style={styles.pollOptionRow}>
+                <View key={index} style={dynamicStyles.pollOptionRow}>
                   {pollType === 'emoji' && (
                     <TextInput
-                      style={styles.pollEmojiInput}
+                      style={dynamicStyles.pollEmojiInput}
                       placeholder="😀"
-                      placeholderTextColor="#888"
+                      placeholderTextColor={theme.colors.textSecondary}
                       value={option.emoji}
                       onChangeText={(val) => updatePollOption(index, 'emoji', val)}
                       maxLength={2}
                     />
                   )}
                   <TextInput
-                    style={styles.pollOptionInput}
+                    style={dynamicStyles.pollOptionInput}
                     placeholder={`Option ${index + 1}`}
-                    placeholderTextColor="#888"
+                    placeholderTextColor={theme.colors.textSecondary}
                     value={option.text}
                     onChangeText={(val) => updatePollOption(index, 'text', val)}
                     maxLength={100}
                   />
                   {pollOptions.length > 2 && (
                     <TouchableOpacity onPress={() => removePollOption(index)}>
-                      <Text style={styles.removePollOption}>✕</Text>
+                      <Text style={dynamicStyles.removePollOption}>✕</Text>
                     </TouchableOpacity>
                   )}
                 </View>
               ))}
               {pollOptions.length < 6 && (
-                <TouchableOpacity style={styles.addPollOptionButton} onPress={addPollOption}>
-                  <Text style={styles.addPollOptionText}>+ Add Option</Text>
+                <TouchableOpacity style={dynamicStyles.addPollOptionButton} onPress={addPollOption}>
+                  <Text style={dynamicStyles.addPollOptionText}>+ Add Option</Text>
                 </TouchableOpacity>
               )}
-              <View style={styles.pollSettingRow}>
-                <Text style={styles.pollSettingLabel}>Reveal results only after vote</Text>
+              <View style={dynamicStyles.pollSettingRow}>
+                <Text style={dynamicStyles.pollSettingLabel}>Reveal results only after vote</Text>
                 <Switch value={revealAfterVote} onValueChange={setRevealAfterVote} />
               </View>
             </View>
           )}
         </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Timed Post (Self-Destruct)</Text>
-          <View style={styles.vanishModeRow}>
-            <Text style={styles.vanishModeLabel}>Enable Vanish Mode</Text>
-            <Switch value={vanishMode} onValueChange={setVanishMode} />
-          </View>
-          {vanishMode && (
-            <View style={styles.vanishOptions}>
-              <View style={styles.durationGrid}>
-                {['1hour', '6hours', '12hours', '24hours', 'custom'].map(duration => (
-                  <TouchableOpacity
-                    key={duration}
-                    style={[styles.durationButton, vanishDuration === duration && styles.durationButtonSelected]}
-                    onPress={() => setVanishDuration(duration as any)}
-                  >
-                    <Text style={styles.durationButtonText}>{duration}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-              {vanishDuration === 'custom' && (
-                <View style={styles.customTimerContainer}>
-                  <Text style={styles.customTimerLabel}>Custom: {customVanishMinutes} minutes</Text>
-                  <Slider
-                    style={styles.slider}
-                    minimumValue={1}
-                    maximumValue={10080}
-                    step={1}
-                    value={customVanishMinutes}
-                    onValueChange={setCustomVanishMinutes}
-                    minimumTrackTintColor="#00D4AA"
-                    maximumTrackTintColor="#333"
-                  />
-                </View>
-              )}
-            </View>
-          )}
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Interaction Settings</Text>
-          <View style={styles.lockRow}>
-            <Text style={styles.lockLabel}>Lock Comments</Text>
+        <View style={dynamicStyles.section}>
+          <Text style={dynamicStyles.sectionTitle}>Interaction Settings</Text>
+          <View style={dynamicStyles.lockRow}>
+            <Text style={dynamicStyles.lockLabel}>Lock Comments</Text>
             <Switch value={commentsLocked} onValueChange={setCommentsLocked} />
           </View>
-          <View style={styles.lockRow}>
-            <Text style={styles.lockLabel}>Lock Reactions</Text>
+          <View style={dynamicStyles.lockRow}>
+            <Text style={dynamicStyles.lockLabel}>Lock Reactions</Text>
             <Switch value={reactionsLocked} onValueChange={setReactionsLocked} />
           </View>
         </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>One-Time Post ✨</Text>
-          <Text style={styles.sectionDescription}>
-            Media will be blurred and caption hidden with particle effect. Once viewed, post disappears from that user's feed.
-          </Text>
-          <View style={styles.lockRow}>
-            <Text style={styles.lockLabel}>Enable One-Time View</Text>
-            <Switch value={oneTimePost} onValueChange={setOneTimePost} />
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Category</Text>
-          <View style={styles.categoryGrid}>
+        <View style={dynamicStyles.section}>
+          <Text style={dynamicStyles.sectionTitle}>Category</Text>
+          <View style={dynamicStyles.categoryGrid}>
             {categories.map(cat => (
-              <TouchableOpacity key={cat.id} style={[styles.categoryItem, selectedCategory === cat.id && styles.categoryItemSelected]} onPress={() => setSelectedCategory(cat.id)}>
-                <Text style={styles.categoryIcon}>{cat.icon}</Text>
-                <Text style={styles.categoryName}>{cat.name}</Text>
+              <TouchableOpacity key={cat.id} style={[dynamicStyles.categoryItem, selectedCategory === cat.id && dynamicStyles.categoryItemSelected]} onPress={() => setSelectedCategory(cat.id)}>
+                <Text style={dynamicStyles.categoryIcon}>{cat.icon}</Text>
+                <Text style={dynamicStyles.categoryName}>{cat.name}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -810,138 +907,5 @@ const CreatePostScreen: React.FC = () => {
     </SafeAreaView>
   );
 };
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, backgroundColor: '#111', borderBottomWidth: 1, borderBottomColor: '#333' },
-  title: { fontSize: 20, fontWeight: '600', color: '#fff' },
-  postButton: { backgroundColor: '#00D4AA', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 },
-  postButtonDisabled: { opacity: 0.5 },
-  postButtonText: { color: '#000', fontWeight: '600' },
-  content: { flex: 1, padding: 16 },
-  textInput: { backgroundColor: '#111', borderRadius: 8, padding: 16, fontSize: 16, color: '#fff', minHeight: 150, marginBottom: 8, borderWidth: 1, borderColor: '#333', textAlignVertical: 'top' },
-  characterCount: { textAlign: 'right', color: '#888', fontSize: 12, marginBottom: 24 },
-  section: { marginBottom: 24 },
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  sectionTitle: { fontSize: 18, fontWeight: '600', color: '#fff', marginBottom: 8 },
-  sectionDescription: { fontSize: 14, color: '#888', marginBottom: 12, lineHeight: 20 },
-  addMediaButton: { backgroundColor: '#333', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6 },
-  addMediaButtonText: { color: '#00D4AA', fontSize: 14, fontWeight: '500' },
-  mediaItem: { position: 'relative', marginRight: 12 },
-  mediaPreviewImage: { width: 80, height: 80, borderRadius: 8, backgroundColor: '#333' },
-  removeMediaButton: { position: 'absolute', top: -8, right: -8, backgroundColor: '#ff4444', borderRadius: 12, width: 24, height: 24, justifyContent: 'center', alignItems: 'center' },
-  removeMediaButtonText: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
-  categoryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  categoryItem: { backgroundColor: '#111', borderRadius: 8, padding: 12, alignItems: 'center', minWidth: 70, borderWidth: 1, borderColor: '#333' },
-  categoryItemSelected: { backgroundColor: '#00D4AA', borderColor: '#00D4AA' },
-  categoryIcon: { fontSize: 24, marginBottom: 4 },
-  categoryName: { color: '#fff', fontSize: 12, fontWeight: '500' },
-  
-  // Voice note styles
-  voiceControls: { marginTop: 8 },
-  voiceButton: { backgroundColor: '#333', padding: 16, borderRadius: 8, alignItems: 'center' },
-  voiceButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  recordingContainer: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    backgroundColor: '#1a1a1a', 
-    padding: 16, 
-    borderRadius: 12,
-    gap: 12
-  },
-  recordingWaveform: { 
-    flex: 1, 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: 12 
-  },
-  recordingDot: { 
-    width: 12, 
-    height: 12, 
-    borderRadius: 6, 
-    backgroundColor: '#ff4444' 
-  },
-  recordingBars: { 
-    flex: 1, 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    height: 30, 
-    gap: 2 
-  },
-  recordingBar: { 
-    width: 3, 
-    backgroundColor: '#00D4AA', 
-    borderRadius: 2 
-  },
-  recordingTime: { 
-    color: '#fff', 
-    fontSize: 14, 
-    fontWeight: '600',
-    minWidth: 45
-  },
-  stopButton: { 
-    width: 48, 
-    height: 48, 
-    borderRadius: 24, 
-    backgroundColor: '#ff4444', 
-    justifyContent: 'center', 
-    alignItems: 'center' 
-  },
-  stopButtonText: { 
-    color: '#fff', 
-    fontSize: 24 
-  },
-  voiceNotePreview: { backgroundColor: '#111', padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#333' },
-  voiceNoteContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 16, backgroundColor: '#1a1a1a', padding: 12, borderRadius: 20 },
-  playButtonCircle: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#00D4AA', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-  playButtonIcon: { color: '#000', fontSize: 20, marginLeft: 2 },
-  voiceWaveformContainer: { flex: 1, justifyContent: 'center' },
-  waveformBars: { flexDirection: 'row', alignItems: 'center', height: 30, gap: 2, marginBottom: 4 },
-  waveformBar: { width: 3, borderRadius: 2, opacity: 0.7 },
-  voiceNoteFooter: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  voiceNoteDuration: { color: '#888', fontSize: 12, fontWeight: '500' },
-  voiceEffectPreview: { fontSize: 11, color: '#00D4AA', fontWeight: '600', textTransform: 'capitalize' },
-  voiceEffectRow: { marginBottom: 12 },
-  voiceEffectLabel: { color: '#888', fontSize: 13, marginBottom: 8, fontWeight: '500' },
-  effectScroll: { flexGrow: 0 },
-  effectButton: { backgroundColor: '#222', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, marginRight: 8, borderWidth: 1, borderColor: '#333' },
-  effectButtonSelected: { backgroundColor: '#00D4AA', borderColor: '#00D4AA' },
-  effectButtonText: { color: '#888', fontSize: 13, fontWeight: '500' },
-  effectButtonTextSelected: { color: '#000', fontWeight: '600' },
-  removeVoiceButton: { backgroundColor: '#ff4444', padding: 12, borderRadius: 8, alignItems: 'center' },
-  removeVoiceButtonText: { color: '#fff', fontSize: 14, fontWeight: '600' },
-  
-  // Poll styles
-  pollContainer: { backgroundColor: '#111', padding: 16, borderRadius: 8, borderWidth: 1, borderColor: '#333' },
-  pollQuestionInput: { backgroundColor: '#222', color: '#fff', padding: 12, borderRadius: 6, marginBottom: 12, fontSize: 16 },
-  pollTypeRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
-  pollTypeButton: { flex: 1, backgroundColor: '#222', padding: 10, borderRadius: 6, alignItems: 'center' },
-  pollTypeButtonSelected: { backgroundColor: '#00D4AA' },
-  pollTypeButtonText: { color: '#fff', fontSize: 14, textTransform: 'capitalize' },
-  pollOptionRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 8 },
-  pollEmojiInput: { backgroundColor: '#222', color: '#fff', padding: 10, borderRadius: 6, width: 50, textAlign: 'center', fontSize: 18 },
-  pollOptionInput: { flex: 1, backgroundColor: '#222', color: '#fff', padding: 10, borderRadius: 6, fontSize: 14 },
-  removePollOption: { color: '#ff4444', fontSize: 20, fontWeight: 'bold', paddingHorizontal: 8 },
-  addPollOptionButton: { backgroundColor: '#333', padding: 10, borderRadius: 6, alignItems: 'center', marginTop: 8 },
-  addPollOptionText: { color: '#00D4AA', fontSize: 14, fontWeight: '600' },
-  pollSettingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#333' },
-  pollSettingLabel: { color: '#fff', fontSize: 14, flex: 1 },
-  
-  // Vanish mode styles
-  vanishModeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  vanishModeLabel: { color: '#fff', fontSize: 16 },
-  vanishOptions: { backgroundColor: '#111', padding: 16, borderRadius: 8, borderWidth: 1, borderColor: '#333' },
-  durationGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
-  durationButton: { backgroundColor: '#222', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 6 },
-  durationButtonSelected: { backgroundColor: '#00D4AA' },
-  durationButtonText: { color: '#fff', fontSize: 14 },
-  customTimerContainer: { marginTop: 12 },
-  customTimerLabel: { color: '#fff', fontSize: 14, marginBottom: 8 },
-  slider: { width: '100%', height: 40 },
-  
-  // Lock styles
-  lockRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8 },
-  lockLabel: { color: '#fff', fontSize: 16 },
-});
 
 export default CreatePostScreen;

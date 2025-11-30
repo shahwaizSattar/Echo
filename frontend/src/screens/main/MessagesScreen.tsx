@@ -9,11 +9,13 @@ import { useAuth } from '../../context/AuthContext';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { convertAvatarUrl } from '../../utils/imageUtils';
 import { getSocket } from '../../services/socket';
+import { useMessageNotification } from '../../context/MessageNotificationContext';
 
 const MessagesScreen: React.FC = () => {
   const { theme } = useTheme();
   const navigation = useNavigation();
   const { user: authUser } = useAuth();
+  const { refreshUnreadCount } = useMessageNotification();
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -63,6 +65,7 @@ const MessagesScreen: React.FC = () => {
   useFocusEffect(
     React.useCallback(() => {
       loadConversations();
+      refreshUnreadCount();
     }, [])
   );
 

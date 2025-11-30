@@ -164,6 +164,11 @@ const WhisperDetailModal: React.FC<WhisperDetailModalProps> = ({
 
   useEffect(() => {
     if (visible) {
+      // Mark one-time post as viewed
+      if (whisper?.oneTime?.enabled) {
+        markAsViewed();
+      }
+      
       // Determine entry position based on swipe direction
       if (swipeDirection === 'left') {
         // Swiped left, so new post comes from right
@@ -231,6 +236,15 @@ const WhisperDetailModal: React.FC<WhisperDetailModalProps> = ({
       setComments(whisper.comments || []);
     }
   }, [whisper]);
+
+  const markAsViewed = async () => {
+    try {
+      await whisperWallAPI.markWhisperViewed(whisper._id);
+      console.log('✅ Marked one-time whisper as viewed:', whisper._id);
+    } catch (error) {
+      console.error('Error marking whisper as viewed:', error);
+    }
+  };
 
   const handleAddComment = async () => {
     if (!comment.trim()) return;

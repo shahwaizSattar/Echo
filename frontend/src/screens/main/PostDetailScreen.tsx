@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -98,6 +98,20 @@ interface Post {
   interactions?: {
     commentsLocked?: boolean;
     reactionsLocked?: boolean;
+  };
+  poll?: {
+    enabled: boolean;
+    type: 'yesno' | 'emoji' | 'multi';
+    question: string;
+    options: Array<{
+      text: string;
+      emoji?: string;
+      votes: any[];
+      voteCount: number;
+    }>;
+    revealAfterVote: boolean;
+    totalVotes: number;
+    isAnonymous: boolean;
   };
   comments: Array<ListItem & {
     type: 'comment';
@@ -398,6 +412,73 @@ const PostDetailScreen = () => {
       textTransform: 'capitalize',
       fontWeight: '500',
     },
+    pollContainer: {
+      marginVertical: theme.spacing.md,
+      backgroundColor: theme.colors.surface,
+      borderRadius: theme.borderRadius.md,
+      padding: theme.spacing.md,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    pollQuestion: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: theme.colors.text,
+      marginBottom: theme.spacing.md,
+    },
+    pollOption: {
+      backgroundColor: theme.colors.background,
+      borderRadius: theme.borderRadius.sm,
+      padding: theme.spacing.md,
+      marginBottom: theme.spacing.sm,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    pollOptionVoted: {
+      borderColor: theme.colors.primary,
+      borderWidth: 2,
+    },
+    pollOptionContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: theme.spacing.xs,
+    },
+    pollOptionEmoji: {
+      fontSize: 20,
+      marginRight: theme.spacing.sm,
+    },
+    pollOptionText: {
+      fontSize: 15,
+      color: theme.colors.text,
+      fontWeight: '500',
+      flex: 1,
+    },
+    pollOptionStats: {
+      marginTop: theme.spacing.xs,
+    },
+    pollOptionPercentage: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: theme.colors.primary,
+      marginBottom: 4,
+    },
+    pollOptionBar: {
+      height: 6,
+      backgroundColor: theme.colors.border,
+      borderRadius: 3,
+      overflow: 'hidden',
+    },
+    pollOptionBarFill: {
+      height: '100%',
+      backgroundColor: theme.colors.primary,
+      borderRadius: 3,
+    },
+    pollTotalVotes: {
+      fontSize: 13,
+      color: theme.colors.textSecondary,
+      marginTop: theme.spacing.sm,
+      textAlign: 'center',
+    },
   });
 
   const fetchPost = async () => {
@@ -482,16 +563,8 @@ const PostDetailScreen = () => {
       let response;
       if (post.userReaction === reactionType) {
         response = await reactionsAPI.removeReaction(postId);
-        Toast.show({
-          type: 'success',
-          text1: 'Reaction removed',
-        });
       } else {
         response = await reactionsAPI.addReaction(postId, reactionType);
-        Toast.show({
-          type: 'success',
-          text1: 'Reaction added',
-        });
       }
       
       console.log('Reaction response:', response);
@@ -536,12 +609,32 @@ const PostDetailScreen = () => {
     try {
       const response = await postsAPI.addComment(postId, comment);
       if (response.success) {
+        // Add comment to state immediately without refetching
+        const newComment: CommentItem = {
+          type: 'comment',
+          _id: (response as any).comment?._id || Date.now().toString(),
+          author: {
+            _id: user?._id || '',
+            username: user?.username || 'You',
+            avatar: user?.avatar,
+          },
+          content: comment,
+          createdAt: new Date().toISOString(),
+        };
+        
+        setData(prevData => [...prevData, newComment]);
         setComment('');
-        Toast.show({
-          type: 'success',
-          text1: 'Comment added successfully',
-        });
-        fetchPost();
+        
+        // Update post comment count
+        if (post) {
+          setPost(prevPost => {
+            if (!prevPost) return null;
+            return {
+              ...prevPost,
+              comments: [...(prevPost.comments || []), newComment],
+            };
+          });
+        }
       }
     } catch (error: any) {
       console.error('Error adding comment:', error);
@@ -675,7 +768,107 @@ const PostDetailScreen = () => {
     );
   };
 
-  const renderMedia = (media: Array<{url: string, mimetype?: string, type?: string}> | undefined) => {
+  const handlePollVote = async (optionIndex: number) => {
+    if (!post || !post.poll) return;
+    
+    try {
+      const response: any = await postsAPI.voteOnPoll(post._id, optionIndex);
+      
+      if (response.success && response.poll) {
+        // Update the post with new poll data
+        setPost({
+          ...post,
+          poll: post.poll ? {
+            ...post.poll,
+            options: response.poll.options,
+            totalVotes: response.poll.totalVotes
+          } : undefined
+        });
+        
+        Toast.show({
+          type: 'success',
+          text1: 'Vote Recorded',
+          text2: 'Your vote has been counted',
+        });
+      }
+    } catch (error: any) {
+      console.error('Poll vote error:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: error?.response?.data?.message || 'Failed to vote',
+      });
+    }
+  };
+
+  const renderPoll = () => {
+    if (!post?.poll?.enabled) return null;
+    
+    const poll = post.poll;
+
+    const userHasVoted = poll.options.some((opt: any) =>
+      opt.votes?.some((vote: any) => vote.equals?.(user?._id) || vote === user?._id)
+    );
+
+    return (
+      <View style={styles.pollContainer}>
+        <Text style={styles.pollQuestion}>{poll.question}</Text>
+        {poll.options.map((option: any, index: number) => {
+          const percentage = poll.totalVotes > 0
+            ? Math.round((option.voteCount / poll.totalVotes) * 100)
+            : 0;
+          const hasVoted = option.votes?.some((vote: any) => 
+            vote.equals?.(user?._id) || vote === user?._id
+          );
+
+          return (
+            <TouchableOpacity
+              key={index}
+              style={[
+                styles.pollOption,
+                hasVoted && styles.pollOptionVoted
+              ]}
+              onPress={() => handlePollVote(index)}
+              disabled={poll.revealAfterVote && !userHasVoted ? false : false}
+            >
+              <View style={styles.pollOptionContent}>
+                {option.emoji && (
+                  <Text style={styles.pollOptionEmoji}>{option.emoji}</Text>
+                )}
+                <Text style={styles.pollOptionText}>{option.text}</Text>
+              </View>
+              {(userHasVoted || !poll.revealAfterVote) && (
+                <View style={styles.pollOptionStats}>
+                  <Text style={styles.pollOptionPercentage}>{percentage}%</Text>
+                  <View style={styles.pollOptionBar}>
+                    <View
+                      style={[
+                        styles.pollOptionBarFill,
+                        { width: `${percentage}%` }
+                      ]}
+                    />
+                  </View>
+                </View>
+              )}
+            </TouchableOpacity>
+          );
+        })}
+        <Text style={styles.pollTotalVotes}>
+          {poll.totalVotes} {poll.totalVotes === 1 ? 'vote' : 'votes'}
+        </Text>
+      </View>
+    );
+  };
+
+  const renderMedia = (media: Array<{url: string, mimetype?: string, type?: string}> | undefined, legacyImage?: string) => {
+    // Handle legacy single image format (content.image)
+    if (legacyImage && (!media || media.length === 0)) {
+      media = [{
+        url: legacyImage,
+        type: 'image',
+      }];
+    }
+    
     if (!media || media.length === 0) return null;
 
     const screenWidth = Dimensions.get('window').width - 70; // Account for padding
@@ -762,6 +955,63 @@ const PostDetailScreen = () => {
       </View>
     );
   };
+
+  // Memoize the footer component to prevent re-renders that cause keyboard to disappear
+  const FooterComponent = useMemo(() => {
+    const commentsLocked = post?.interactions?.commentsLocked;
+    
+    return (
+      <View>
+        <View style={[styles.commentInputContainer, commentsLocked && { opacity: 0.4 }]}>
+          <TextInput
+            style={[styles.commentInput, {
+              color: theme.colors.text,
+              borderColor: theme.colors.border,
+              backgroundColor: theme.colors.surface,
+            }]}
+            value={comment}
+            onChangeText={setComment}
+            placeholder={commentsLocked ? "Comments are locked" : "Add a comment..."}
+            placeholderTextColor={theme.colors.textSecondary}
+            multiline
+            editable={!commentsLocked}
+          />
+          <TouchableOpacity
+            style={[
+              styles.commentButton, 
+              { backgroundColor: theme.colors.primary },
+              commentsLocked && { opacity: 0.4 }
+            ]}
+            onPress={() => {
+              if (commentsLocked) {
+                Toast.show({
+                  type: 'error',
+                  text1: 'Comments Locked',
+                  text2: 'Comments are locked on this post',
+                });
+                return;
+              }
+              handleComment();
+            }}
+            disabled={commentsLocked}
+          >
+            <Text style={styles.commentButtonText}>Post</Text>
+          </TouchableOpacity>
+        </View>
+        {commentsLocked && (
+          <Text style={{ 
+            fontSize: 12, 
+            color: theme.colors.error, 
+            textAlign: 'center',
+            marginTop: 8,
+            marginBottom: 16,
+          }}>
+            🔒 Comments are locked on this post
+          </Text>
+        )}
+      </View>
+    );
+  }, [comment, post?.interactions?.commentsLocked, theme.colors]);
 
   if (loading) {
     return (
@@ -871,7 +1121,8 @@ const PostDetailScreen = () => {
                 {censorText(post.content.text)}
               </Text>
               {post.content?.voiceNote?.url && renderVoiceNote(post.content.voiceNote)}
-              {renderMedia(post.content.media)}
+              {renderMedia(post.content.media, (post.content as any)?.image)}
+              {post.poll?.enabled && renderPoll()}
               <ReactionBar />
             </View>
           );
@@ -900,61 +1151,7 @@ const PostDetailScreen = () => {
             </Text>
           </View>
         )}
-        ListFooterComponent={() => {
-          const commentsLocked = post?.interactions?.commentsLocked;
-          
-          return (
-            <View>
-              <View style={[styles.commentInputContainer, commentsLocked && { opacity: 0.4 }]}>
-                <TextInput
-                  style={[styles.commentInput, {
-                    color: theme.colors.text,
-                    borderColor: theme.colors.border,
-                    backgroundColor: theme.colors.surface,
-                  }]}
-                  value={comment}
-                  onChangeText={setComment}
-                  placeholder={commentsLocked ? "Comments are locked" : "Add a comment..."}
-                  placeholderTextColor={theme.colors.textSecondary}
-                  multiline
-                  editable={!commentsLocked}
-                />
-                <TouchableOpacity
-                  style={[
-                    styles.commentButton, 
-                    { backgroundColor: theme.colors.primary },
-                    commentsLocked && { opacity: 0.4 }
-                  ]}
-                  onPress={() => {
-                    if (commentsLocked) {
-                      Toast.show({
-                        type: 'error',
-                        text1: 'Comments Locked',
-                        text2: 'Comments are locked on this post',
-                      });
-                      return;
-                    }
-                    handleComment();
-                  }}
-                  disabled={commentsLocked}
-                >
-                  <Text style={styles.commentButtonText}>Post</Text>
-                </TouchableOpacity>
-              </View>
-              {commentsLocked && (
-                <Text style={{ 
-                  fontSize: 12, 
-                  color: theme.colors.error, 
-                  textAlign: 'center',
-                  marginTop: 8,
-                  marginBottom: 16,
-                }}>
-                  🔒 Comments are locked on this post
-                </Text>
-              )}
-            </View>
-          );
-        }}
+        ListFooterComponent={FooterComponent}
       />
     </SafeAreaView>
   );

@@ -49,11 +49,21 @@ router.get('/nearby', authenticateToken, async (req, res) => {
         post.geoLocation.coordinates[0]
       );
 
+      const postObj = post.toObject();
+      console.log('📍 Post locationName:', postObj.locationName);
+      console.log('📍 Post rating:', postObj.rating);
+
       return {
-        ...post.toObject(),
+        ...postObj,
         distance: parseFloat(distance.toFixed(1)),
       };
     });
+
+    console.log('📤 Returning', postsWithDistance.length, 'posts');
+    if (postsWithDistance.length > 0) {
+      console.log('📤 First post has locationName:', postsWithDistance[0].locationName);
+      console.log('📤 First post has rating:', postsWithDistance[0].rating);
+    }
 
     res.json({
       success: true,

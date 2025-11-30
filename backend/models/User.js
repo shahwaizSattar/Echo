@@ -29,6 +29,51 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  customAvatar: {
+    mask: {
+      style: {
+        type: String,
+        enum: ['cloth', 'medical', 'matte', 'festival', 'gradient'],
+        default: 'cloth'
+      },
+      color: { type: String, default: '#E8E6E1' },
+      pattern: { type: String, default: 'solid' }
+    },
+    hair: {
+      style: {
+        type: String,
+        enum: ['braids', 'curly', 'bun', 'fade', 'straight', 'shoulder', 'side-fringe', 'middle-part'],
+        default: 'straight'
+      },
+      color: { type: String, default: '#8B8985' }
+    },
+    outfit: {
+      type: {
+        type: String,
+        enum: ['hoodie', 'oversized', 'trench', 'office', 'tee', 'cardigan', 'jacket'],
+        default: 'hoodie'
+      },
+      color: { type: String, default: '#D4D2CD' }
+    },
+    theme: {
+      name: {
+        type: String,
+        enum: ['nebula-drift', 'urban-dawn', 'midnight-frost', 'pastel-air', 'noir-shadow', 'velvet-dusk', 'misty-garden', 'arctic-whisper'],
+        default: 'urban-dawn'
+      },
+      lighting: { type: String, default: 'soft' },
+      background: { type: String, default: '#F5F5F0' }
+    },
+    accessories: [{
+      type: {
+        type: String,
+        enum: ['earrings', 'glasses', 'necklace', 'hat', 'scarf']
+      },
+      style: String,
+      color: String
+    }],
+    enabled: { type: Boolean, default: false }
+  },
   bio: {
     type: String,
     maxlength: 500,

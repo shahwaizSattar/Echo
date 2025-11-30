@@ -116,6 +116,11 @@ cd frontend
 # Install dependencies
 npm install
 
+# Configure API endpoint
+cp .env.example .env
+# Edit .env and set your IP address:
+# EXPO_PUBLIC_API_BASE=http://YOUR_IP:5000
+
 # For iOS (macOS only)
 cd ios && pod install && cd ..
 
@@ -128,6 +133,8 @@ npm run android
 # Run on iOS
 npm run ios
 ```
+
+> **📌 Important:** When your IP address changes, see [IP_CONFIGURATION_GUIDE.md](./IP_CONFIGURATION_GUIDE.md) for instructions.
 
 ### Environment Variables
 Create a `.env` file in the root directory:

@@ -12,6 +12,12 @@ function generateRandomUsername() {
 }
 
 const whisperPostSchema = new mongoose.Schema({
+  // Store user ID for profile display (not exposed in public API)
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: false // Optional to maintain backward compatibility
+  },
   randomUsername: {
     type: String,
     required: true,
@@ -143,6 +149,24 @@ const whisperPostSchema = new mongoose.Schema({
     roomId: String,
     theme: String,
     expiresAt: Date
+  },
+  
+  // Vanish mode (timed self-destruct)
+  vanishMode: {
+    enabled: { type: Boolean, default: false },
+    duration: {
+      type: String,
+      enum: ['1hour', '6hours', '12hours', '24hours', '1day', '1week', 'custom'],
+      default: '1day'
+    },
+    customMinutes: { type: Number, min: 1, max: 10080 }, // Max 1 week in minutes
+    vanishAt: Date
+  },
+  
+  // One-time view mode
+  oneTime: {
+    enabled: { type: Boolean, default: false },
+    viewedBy: [String] // Store session IDs instead of user IDs for anonymity
   }
 }, {
   timestamps: true
@@ -153,6 +177,7 @@ whisperPostSchema.index({ category: 1, createdAt: -1 });
 whisperPostSchema.index({ 'trending.score': -1 });
 whisperPostSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 whisperPostSchema.index({ 'confessionRoom.roomId': 1 });
+whisperPostSchema.index({ 'vanishMode.vanishAt': 1 });
 
 // Calculate trending score for WhisperWall posts
 whisperPostSchema.methods.calculateTrendingScore = function() {
@@ -236,5 +261,22 @@ whisperPostSchema.methods.createChainMessage = function(originalMessage, hopCoun
   this.hopCount = hopCount;
   return this;
 };
+
+// Auto-set vanish time
+whisperPostSchema.pre('save', function(next) {
+  if (this.vanishMode.enabled && !this.vanishMode.vanishAt) {
+    const durations = {
+      '1hour': 60 * 60 * 1000,
+      '6hours': 6 * 60 * 60 * 1000,
+      '12hours': 12 * 60 * 60 * 1000,
+      '24hours': 24 * 60 * 60 * 1000,
+      '1day': 24 * 60 * 60 * 1000,
+      '1week': 7 * 24 * 60 * 60 * 1000,
+      'custom': (this.vanishMode.customMinutes || 60) * 60 * 1000
+    };
+    this.vanishMode.vanishAt = new Date(Date.now() + durations[this.vanishMode.duration]);
+  }
+  next();
+});
 
 module.exports = mongoose.model('WhisperPost', whisperPostSchema);

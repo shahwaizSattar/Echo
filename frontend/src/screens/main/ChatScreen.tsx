@@ -12,6 +12,7 @@ import ReactionPopup from '../../components/ReactionPopup';
 import * as ImagePicker from 'expo-image-picker';
 import { Video } from 'expo-av';
 import { Audio } from 'expo-av';
+import { useMessageNotification } from '../../context/MessageNotificationContext';
 
 type ChatRouteProp = RouteProp<RootStackParamList, 'Chat'>;
 
@@ -55,6 +56,7 @@ const ChatScreen: React.FC = () => {
   const route = useRoute<ChatRouteProp>();
   const { user } = useAuth();
   const navigation = useNavigation();
+  const { refreshUnreadCount } = useMessageNotification();
   const { peerId, username, avatar } = route.params;
 
   const [messages, setMessages] = useState<MessageItem[]>([]);
@@ -374,7 +376,7 @@ const ChatScreen: React.FC = () => {
         const msgs = msgsRaw.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
         setMessages(msgs);
         // Mark messages as read when opening chat
-        chatAPI.markRead(peerId).catch(() => {});
+        chatAPI.markRead(peerId).then(() => refreshUnreadCount()).catch(() => {});
       } catch (e: any) {
         console.error('Failed to load messages:', e);
         Toast.show({ type: 'error', text1: 'Error', text2: 'Failed to load messages' });
@@ -449,7 +451,7 @@ const ChatScreen: React.FC = () => {
             return next;
           });
           // keep thread read while viewing
-          chatAPI.markRead(peerId).catch(() => {});
+          chatAPI.markRead(peerId).then(() => refreshUnreadCount()).catch(() => {});
         }
       } catch (e) {}
     };
@@ -924,7 +926,7 @@ const ChatScreen: React.FC = () => {
     <SafeAreaView style={styles.container} edges={['top']}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.header}>
-        <TouchableOpacity onPress={() => { chatAPI.markRead(peerId).finally(() => (navigation as any).goBack()); }} style={{ marginRight: 12 }}>
+        <TouchableOpacity onPress={() => { chatAPI.markRead(peerId).then(() => refreshUnreadCount()).finally(() => (navigation as any).goBack()); }} style={{ marginRight: 12 }}>
           <Text style={{ color: theme.colors.primary, fontWeight: '700' }}>Back</Text>
         </TouchableOpacity>
         {avatar ? (

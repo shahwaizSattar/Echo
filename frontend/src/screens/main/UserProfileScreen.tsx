@@ -512,7 +512,15 @@ const UserProfileScreen: React.FC = () => {
     );
   };
 
-  const renderMedia = (media: any[]) => {
+  const renderMedia = (media: any[], legacyImage?: string) => {
+    // Handle legacy single image format (content.image)
+    if (legacyImage && (!media || media.length === 0)) {
+      media = [{
+        url: legacyImage,
+        type: 'image',
+      }];
+    }
+    
     if (!media || media.length === 0) return null;
     
     const screenWidth = Dimensions.get('window').width;
@@ -672,7 +680,7 @@ const UserProfileScreen: React.FC = () => {
                 </Text>
               )}
               {item.content?.voiceNote?.url && renderVoiceNote(item.content.voiceNote)}
-              {renderMedia(item.content.media)}
+              {renderMedia(item.content.media, (item.content as any)?.image)}
             </>
           ) : (
             <OneTimePostCard post={item} />
@@ -682,7 +690,7 @@ const UserProfileScreen: React.FC = () => {
         <>
           {item.content?.text && <Text style={[styles.postText, { color: theme.colors.text }]} numberOfLines={3}>{censorText(item.content.text)}</Text>}
           {item.content?.voiceNote?.url && renderVoiceNote(item.content.voiceNote)}
-          {renderMedia(item.content.media)}
+          {renderMedia(item.content.media, (item.content as any)?.image)}
         </>
       )}
       

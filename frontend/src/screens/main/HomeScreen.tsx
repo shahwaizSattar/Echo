@@ -26,6 +26,7 @@ import { reactionsAPI } from '../../services/reactions';
 import { RootStackParamList } from '../../types/navigation';
 import Toast from 'react-native-toast-message';
 import NotificationBell from '../../components/NotificationBell';
+import MessageBell from '../../components/MessageBell';
 import ReactionPopup from '../../components/ReactionPopup';
 import PostOptions from '../../components/PostOptions';
 import UserPostOptions from '../../components/UserPostOptions';
@@ -34,6 +35,7 @@ import OneTimePostCard from '../../components/OneTimePostCard';
 import { convertAvatarUrl } from '../../utils/imageUtils';
 import { censorText } from '../../utils/censorUtils';
 import { formatTimeAgo } from '../../utils/timeUtils';
+import ModeratedContent from '../../components/moderation/ModeratedContent';
 
 type HomeScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Home'>;
 
@@ -109,15 +111,20 @@ const HomeScreen: React.FC = () => {
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Scroll ref for scroll to top functionality
+  const scrollViewRef = useRef<ScrollView>(null);
 
   const loadPosts = async () => {
     try {
       setLoading(true);
+      console.log('🔄 Loading feed posts...');
 
       const response = await postsAPI.getFeed(1, 20); // API call
       if (response.success) {
         // Note: Backend should filter muted/blocked users, but we can add client-side filtering as backup
         setPosts(response.data || []);
+        console.log('✅ Feed loaded:', response.data?.length || 0, 'posts');
       } else {
         Toast.show({
           type: 'error',
@@ -126,7 +133,7 @@ const HomeScreen: React.FC = () => {
         });
       }
     } catch (error: any) {
-      console.log('Error loading posts:', error);
+      console.log('❌ Error loading posts:', error);
       const message = error?.response?.data?.message || 'Failed to load feed';
       Toast.show({ type: 'error', text1: 'Error', text2: message });
     } finally {
@@ -148,9 +155,28 @@ const HomeScreen: React.FC = () => {
 
   useFocusEffect(
     React.useCallback(() => {
-      if (user) loadPosts();
+      if (user) {
+        // Reload posts when screen comes into focus
+        // This ensures posts from unblocked users appear immediately
+        loadPosts();
+      }
     }, [user])
   );
+
+  // Listen for tab press to scroll to top and refresh
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('tabPress' as any, (e: any) => {
+      // Scroll to top
+      scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+      
+      // Refresh feed
+      if (user) {
+        onRefresh();
+      }
+    });
+
+    return unsubscribe;
+  }, [navigation, user]);
 
   const showReactionPopup = (postId: string, event?: any) => {
     // Try to measure the button position first
@@ -1088,6 +1114,73 @@ const HomeScreen: React.FC = () => {
       textTransform: 'capitalize',
       fontWeight: '500',
     },
+    pollContainer: {
+      marginVertical: theme.spacing.md,
+      backgroundColor: theme.colors.surface,
+      borderRadius: theme.borderRadius.md,
+      padding: theme.spacing.md,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    pollQuestion: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: theme.colors.text,
+      marginBottom: theme.spacing.md,
+    },
+    pollOption: {
+      backgroundColor: theme.colors.background,
+      borderRadius: theme.borderRadius.sm,
+      padding: theme.spacing.md,
+      marginBottom: theme.spacing.sm,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    pollOptionVoted: {
+      borderColor: theme.colors.primary,
+      borderWidth: 2,
+    },
+    pollOptionContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: theme.spacing.xs,
+    },
+    pollOptionEmoji: {
+      fontSize: 20,
+      marginRight: theme.spacing.sm,
+    },
+    pollOptionText: {
+      fontSize: 15,
+      color: theme.colors.text,
+      fontWeight: '500',
+      flex: 1,
+    },
+    pollOptionStats: {
+      marginTop: theme.spacing.xs,
+    },
+    pollOptionPercentage: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: theme.colors.primary,
+      marginBottom: 4,
+    },
+    pollOptionBar: {
+      height: 6,
+      backgroundColor: theme.colors.border,
+      borderRadius: 3,
+      overflow: 'hidden',
+    },
+    pollOptionBarFill: {
+      height: '100%',
+      backgroundColor: theme.colors.primary,
+      borderRadius: 3,
+    },
+    pollTotalVotes: {
+      fontSize: 13,
+      color: theme.colors.textSecondary,
+      marginTop: theme.spacing.sm,
+      textAlign: 'center',
+    },
   });
 
 
@@ -1228,7 +1321,116 @@ const HomeScreen: React.FC = () => {
     );
   };
 
-  const renderMedia = (media: any[]) => {
+  const handlePollVote = async (postId: string, optionIndex: number) => {
+    try {
+      const response: any = await postsAPI.voteOnPoll(postId, optionIndex);
+      
+      if (response.success && response.poll) {
+        // Update the post in the local state
+        setPosts(prevPosts =>
+          prevPosts.map(p => {
+            if (p._id === postId) {
+              return {
+                ...p,
+                poll: {
+                  ...p.poll,
+                  options: response.poll.options,
+                  totalVotes: response.poll.totalVotes
+                }
+              };
+            }
+            return p;
+          })
+        );
+        
+        Toast.show({
+          type: 'success',
+          text1: 'Vote Recorded',
+          text2: 'Your vote has been counted',
+        });
+      }
+    } catch (error: any) {
+      console.error('Poll vote error:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: error?.response?.data?.message || 'Failed to vote',
+      });
+    }
+  };
+
+  const renderPoll = (post: any) => {
+    if (!post.poll?.enabled) return null;
+
+    const userHasVoted = post.poll.options.some((opt: any) =>
+      opt.votes?.some((vote: any) => vote.equals?.(user?._id) || vote === user?._id)
+    );
+
+    return (
+      <View style={styles.pollContainer}>
+        <Text style={styles.pollQuestion}>{post.poll.question}</Text>
+        {post.poll.options.map((option: any, index: number) => {
+          const percentage = post.poll.totalVotes > 0
+            ? Math.round((option.voteCount / post.poll.totalVotes) * 100)
+            : 0;
+          const hasVoted = option.votes?.some((vote: any) => 
+            vote.equals?.(user?._id) || vote === user?._id
+          );
+
+          return (
+            <TouchableOpacity
+              key={index}
+              style={[
+                styles.pollOption,
+                hasVoted && styles.pollOptionVoted
+              ]}
+              onPress={(e) => {
+                e.stopPropagation();
+                handlePollVote(post._id, index);
+              }}
+              disabled={post.poll.revealAfterVote && !userHasVoted ? false : false}
+            >
+              <View style={styles.pollOptionContent}>
+                {option.emoji && (
+                  <Text style={styles.pollOptionEmoji}>{option.emoji}</Text>
+                )}
+                <Text style={styles.pollOptionText}>{option.text}</Text>
+              </View>
+              {(userHasVoted || !post.poll.revealAfterVote) && (
+                <View style={styles.pollOptionStats}>
+                  <Text style={styles.pollOptionPercentage}>{percentage}%</Text>
+                  <View style={styles.pollOptionBar}>
+                    <View
+                      style={[
+                        styles.pollOptionBarFill,
+                        { width: `${percentage}%` }
+                      ]}
+                    />
+                  </View>
+                </View>
+              )}
+            </TouchableOpacity>
+          );
+        })}
+        <Text style={styles.pollTotalVotes}>
+          {post.poll.totalVotes} {post.poll.totalVotes === 1 ? 'vote' : 'votes'}
+        </Text>
+      </View>
+    );
+  };
+
+  const renderMedia = (media: any[], legacyImage?: string) => {
+    // Handle legacy single image format (content.image)
+    if (legacyImage && (!media || media.length === 0)) {
+      media = [{
+        url: legacyImage,
+        type: 'image',
+        filename: 'legacy-image',
+        originalName: 'image',
+        size: 0
+      }];
+    }
+    
     if (!media || media.length === 0) return null;
     
     console.log('🎬 Rendering media:', media); // Debug log
@@ -1255,8 +1457,15 @@ const HomeScreen: React.FC = () => {
                   useNativeControls
                   resizeMode={ResizeMode.CONTAIN}
                   isLooping={false}
-                  onError={(error) => console.log('❌ Video load error:', error, 'URL:', media[0].url)}
+                  shouldPlay={false}
+                  isMuted={false}
+                  onError={(error) => {
+                    console.log('❌ Video load error:', error, 'URL:', media[0].url);
+                    console.log('❌ Full error object:', JSON.stringify(error, null, 2));
+                  }}
                   onLoad={() => console.log('✅ Video loaded successfully:', media[0].url)}
+                  onLoadStart={() => console.log('🔄 Video loading started:', media[0].url)}
+                  onReadyForDisplay={() => console.log('📺 Video ready for display:', media[0].url)}
                 />
               </View>
             ) : (
@@ -1289,8 +1498,15 @@ const HomeScreen: React.FC = () => {
                       useNativeControls
                       resizeMode={ResizeMode.CONTAIN}
                       isLooping={false}
-                      onError={(error) => console.log('❌ Video load error:', error, 'URL:', item.url)}
+                      shouldPlay={false}
+                      isMuted={false}
+                      onError={(error) => {
+                        console.log('❌ Video load error:', error, 'URL:', item.url);
+                        console.log('❌ Full error object:', JSON.stringify(error, null, 2));
+                      }}
                       onLoad={() => console.log('✅ Video loaded successfully:', item.url)}
+                      onLoadStart={() => console.log('🔄 Video loading started:', item.url)}
+                      onReadyForDisplay={() => console.log('📺 Video ready for display:', item.url)}
                     />
                   </View>
                 ) : (
@@ -1375,12 +1591,7 @@ const HomeScreen: React.FC = () => {
 
           {/* Right: Messaging and Notification Icons */}
           <View style={styles.rightSection}>
-            <TouchableOpacity 
-              style={styles.iconButton} 
-              onPress={() => navigation.navigate('Messages' as never)}
-            >
-              <Text style={styles.iconText}>💬</Text>
-            </TouchableOpacity>
+            <MessageBell />
             <NotificationBell />
           </View>
         </View>
@@ -1459,6 +1670,7 @@ const HomeScreen: React.FC = () => {
 
       {/* Content */}
       <ScrollView
+        ref={scrollViewRef}
         style={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
@@ -1625,9 +1837,16 @@ const HomeScreen: React.FC = () => {
                 <OneTimePostCard post={post} />
               ) : (
                 <>
-                  {post.content?.text && <Text style={[styles.postText, { color: theme.colors.text }]} numberOfLines={3}>{censorText(post.content.text)}</Text>}
+                  {post.content?.text && (
+                    <ModeratedContent moderation={post.content?.moderation}>
+                      <Text style={[styles.postText, { color: theme.colors.text }]} numberOfLines={3}>
+                        {censorText(post.content.text)}
+                      </Text>
+                    </ModeratedContent>
+                  )}
                   {post.content?.voiceNote?.url && renderVoiceNote(post.content.voiceNote)}
-                  {renderMedia(post.content.media)}
+                  {renderMedia(post.content.media, post.content?.image)}
+                  {post.poll?.enabled && renderPoll(post)}
                 </>
               )}
               

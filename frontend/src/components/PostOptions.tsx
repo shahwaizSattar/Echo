@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -35,6 +35,7 @@ const PostOptions: React.FC<PostOptionsProps> = ({
   const { theme } = useTheme();
   const [showReportOptions, setShowReportOptions] = useState(false);
   const [reportReason, setReportReason] = useState<string | null>(null);
+  const undoTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const reportReasons = [
     { id: 'harassment', label: 'Harassment', icon: '🚫' },
@@ -71,47 +72,178 @@ const PostOptions: React.FC<PostOptionsProps> = ({
   };
 
   const handleMuteUser = async () => {
-    if (!authorId) return;
-    try {
-      await userAPI.muteUser(authorId);
-      onUserMuted?.();
-      onClose();
-    } catch (error) {
-      Toast.show({
-        type: 'error',
-        text1: 'Error',
-        text2: 'Failed to mute user. Please try again.',
-      });
+    if (!authorId || !authorUsername) return;
+    
+    // Immediately hide posts and close modal (optimistic UI)
+    onUserMuted?.();
+    onClose();
+    
+    let undoCancelled = false;
+    
+    // Clear any existing timer
+    if (undoTimerRef.current) {
+      clearTimeout(undoTimerRef.current);
     }
+    
+    // Show toast with undo option
+    Toast.show({
+      type: 'success',
+      text1: 'User Muted',
+      text2: `@${authorUsername} muted. Tap to undo.`,
+      visibilityTime: 5000,
+      onPress: () => {
+        undoCancelled = true;
+        if (undoTimerRef.current) {
+          clearTimeout(undoTimerRef.current);
+        }
+        Toast.hide();
+        Toast.show({
+          type: 'info',
+          text1: 'Mute Cancelled',
+          text2: `@${authorUsername} was not muted. Refresh to see posts.`,
+          visibilityTime: 3000,
+        });
+      },
+    });
+    
+    // Set timer to actually mute after 5 seconds
+    undoTimerRef.current = setTimeout(async () => {
+      if (!undoCancelled) {
+        try {
+          await userAPI.muteUser(authorId);
+          console.log('✅ User muted successfully:', authorUsername);
+        } catch (error: any) {
+          console.error('❌ Failed to mute user:', error);
+          const message = error?.response?.data?.message || 'Failed to mute user';
+          
+          // If already muted, that's okay
+          if (message.includes('already muted')) {
+            console.log('User was already muted');
+          } else {
+            Toast.show({
+              type: 'error',
+              text1: 'Mute Failed',
+              text2: message,
+              visibilityTime: 3000,
+            });
+          }
+        }
+      }
+    }, 5000);
   };
 
   const handleBlockUser = async () => {
-    if (!authorId) return;
-    try {
-      await userAPI.blockUser(authorId);
-      onUserBlocked?.();
-      onClose();
-    } catch (error) {
-      Toast.show({
-        type: 'error',
-        text1: 'Error',
-        text2: 'Failed to block user. Please try again.',
-      });
+    if (!authorId || !authorUsername) return;
+    
+    // Immediately hide posts and close modal (optimistic UI)
+    onUserBlocked?.();
+    onClose();
+    
+    let undoCancelled = false;
+    
+    // Clear any existing timer
+    if (undoTimerRef.current) {
+      clearTimeout(undoTimerRef.current);
     }
+    
+    // Show toast with undo option
+    Toast.show({
+      type: 'success',
+      text1: 'User Blocked',
+      text2: `@${authorUsername} blocked. Tap to undo.`,
+      visibilityTime: 5000,
+      onPress: () => {
+        undoCancelled = true;
+        if (undoTimerRef.current) {
+          clearTimeout(undoTimerRef.current);
+        }
+        Toast.hide();
+        Toast.show({
+          type: 'info',
+          text1: 'Block Cancelled',
+          text2: `@${authorUsername} was not blocked. Refresh to see posts.`,
+          visibilityTime: 3000,
+        });
+      },
+    });
+    
+    // Set timer to actually block after 5 seconds
+    undoTimerRef.current = setTimeout(async () => {
+      if (!undoCancelled) {
+        try {
+          await userAPI.blockUser(authorId);
+          console.log('✅ User blocked successfully:', authorUsername);
+        } catch (error: any) {
+          console.error('❌ Failed to block user:', error);
+          const message = error?.response?.data?.message || 'Failed to block user';
+          
+          // If already blocked, that's okay
+          if (message.includes('already blocked')) {
+            console.log('User was already blocked');
+          } else {
+            Toast.show({
+              type: 'error',
+              text1: 'Block Failed',
+              text2: message,
+              visibilityTime: 3000,
+            });
+          }
+        }
+      }
+    }, 5000);
   };
 
   const handleHidePost = async () => {
-    try {
-      await postsAPI.hidePost(postId);
-      onPostHidden?.();
-      onClose();
-    } catch (error) {
-      Toast.show({
-        type: 'error',
-        text1: 'Error',
-        text2: 'Failed to hide post. Please try again.',
-      });
+    // Immediately hide post and close modal (optimistic UI)
+    onPostHidden?.();
+    onClose();
+    
+    let undoCancelled = false;
+    
+    // Clear any existing timer
+    if (undoTimerRef.current) {
+      clearTimeout(undoTimerRef.current);
     }
+    
+    // Show toast with undo option
+    Toast.show({
+      type: 'success',
+      text1: 'Post Hidden',
+      text2: 'Post removed from feed. Tap to undo.',
+      visibilityTime: 5000,
+      onPress: () => {
+        undoCancelled = true;
+        if (undoTimerRef.current) {
+          clearTimeout(undoTimerRef.current);
+        }
+        Toast.hide();
+        Toast.show({
+          type: 'info',
+          text1: 'Hide Cancelled',
+          text2: 'Post was not hidden. Refresh to see it.',
+          visibilityTime: 3000,
+        });
+      },
+    });
+    
+    // Set timer to actually hide after 5 seconds
+    undoTimerRef.current = setTimeout(async () => {
+      if (!undoCancelled) {
+        try {
+          await postsAPI.hidePost(postId);
+          console.log('✅ Post hidden successfully');
+        } catch (error: any) {
+          console.error('❌ Failed to hide post:', error);
+          const message = error?.response?.data?.message || 'Failed to hide post';
+          Toast.show({
+            type: 'error',
+            text1: 'Hide Failed',
+            text2: message,
+            visibilityTime: 3000,
+          });
+        }
+      }
+    }, 5000);
   };
 
   const styles = StyleSheet.create({

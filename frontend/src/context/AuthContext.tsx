@@ -7,6 +7,7 @@ export interface User {
   email: string;
   username: string;
   avatar?: string;
+  customAvatar?: any;
   bio: string;
   preferences: string[];
   stats: {

@@ -13,6 +13,28 @@ const postSchema = new mongoose.Schema({
       maxlength: 2000,
       default: ''
     },
+    isFlagged: {
+      type: Boolean,
+      default: false
+    },
+    moderation: {
+      severity: {
+        type: String,
+        enum: ['SAFE', 'BLUR', 'WARNING', 'BLOCK'],
+        default: 'SAFE'
+      },
+      scores: {
+        hateSpeech: { type: Number, default: 0 },
+        harassment: { type: Number, default: 0 },
+        threats: { type: Number, default: 0 },
+        sexual: { type: Number, default: 0 },
+        selfHarm: { type: Number, default: 0 },
+        extremism: { type: Number, default: 0 },
+        profanity: { type: Number, default: 0 }
+      },
+      reason: String,
+      checkedAt: Date
+    },
     image: {
       type: String,
       default: null
@@ -92,6 +114,7 @@ const postSchema = new mongoose.Schema({
   comments: [{
     author: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     content: { type: String, required: true, maxlength: 500 },
+    isFlagged: { type: Boolean, default: false },
     isAnonymous: { type: Boolean, default: false },
     createdAt: { type: Date, default: Date.now },
     reactions: {
@@ -156,6 +179,16 @@ const postSchema = new mongoose.Schema({
   locationEnabled: {
     type: Boolean,
     default: false
+  },
+  locationName: {
+    type: String,
+    default: null
+  },
+  rating: {
+    type: Number,
+    min: 1,
+    max: 5,
+    default: null
   },
   isAIGenerated: {
     image: { type: Boolean, default: false }

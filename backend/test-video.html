@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Video Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        video {
+            width: 100%;
+            max-width: 640px;
+            border: 2px solid #333;
+        }
+        .info {
+            background: #f0f0f0;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Video Playback Test</h1>
+    
+    <div class="info">
+        <h3>Test 1: Direct Video Tag</h3>
+        <video controls id="video1">
+            <source src="/uploads/videos/71260391-2089-4f55-b153-2000f6ab692a.mp4" type="video/mp4">
+            Your browser does not support the video tag.
+        </video>
+    </div>
+
+    <div class="info">
+        <h3>Test 2: With Full URL</h3>
+        <video controls id="video2">
+            <source src="http://localhost:5000/uploads/videos/71260391-2089-4f55-b153-2000f6ab692a.mp4" type="video/mp4">
+            Your browser does not support the video tag.
+        </video>
+    </div>
+
+    <div class="info">
+        <h3>Video Info:</h3>
+        <div id="info"></div>
+    </div>
+
+    <script>
+        const video1 = document.getElementById('video1');
+        const video2 = document.getElementById('video2');
+        const infoDiv = document.getElementById('info');
+
+        video1.addEventListener('loadedmetadata', () => {
+            infoDiv.innerHTML += `<p>✅ Video 1 loaded - Duration: ${video1.duration}s, Size: ${video1.videoWidth}x${video1.videoHeight}</p>`;
+        });
+
+        video1.addEventListener('error', (e) => {
+            infoDiv.innerHTML += `<p>❌ Video 1 error: ${e.target.error?.message || 'Unknown error'}</p>`;
+        });
+
+        video2.addEventListener('loadedmetadata', () => {
+            infoDiv.innerHTML += `<p>✅ Video 2 loaded - Duration: ${video2.duration}s, Size: ${video2.videoWidth}x${video2.videoHeight}</p>`;
+        });
+
+        video2.addEventListener('error', (e) => {
+            infoDiv.innerHTML += `<p>❌ Video 2 error: ${e.target.error?.message || 'Unknown error'}</p>`;
+        });
+    </script>
+</body>
+</html>

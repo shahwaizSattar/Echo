@@ -36,7 +36,12 @@ const locationRoutes = require('./routes/location');
 const { uploadMiddleware, getFileUrl } = require('./middleware/upload');
 
 // --- Security headers ---
-app.use(helmet());
+// Disable some helmet features that can block media playback
+app.use(helmet({
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: false,
+  contentSecurityPolicy: false,
+}));
 
 // --- CORS Setup ---
 // In production, you can set CORS_ORIGINS as a comma-separated list of allowed origins.
@@ -117,8 +122,35 @@ const authLimiter = rateLimit({
   },
 });
 
-// --- Serve static files ---
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// --- Serve static files with proper headers for video streaming ---
+app.use('/uploads', (req, res, next) => {
+  // Enable CORS for media files
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Range');
+  res.header('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges');
+  
+  // Enable range requests for video streaming
+  res.header('Accept-Ranges', 'bytes');
+  
+  next();
+}, express.static(path.join(__dirname, 'uploads'), {
+  // Enable etag and last-modified for caching
+  etag: true,
+  lastModified: true,
+  // Set proper content types
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.mp4')) {
+      res.setHeader('Content-Type', 'video/mp4');
+    } else if (filePath.endsWith('.webm')) {
+      res.setHeader('Content-Type', 'video/webm');
+    } else if (filePath.endsWith('.mp3')) {
+      res.setHeader('Content-Type', 'audio/mpeg');
+    } else if (filePath.endsWith('.wav')) {
+      res.setHeader('Content-Type', 'audio/wav');
+    }
+  }
+}));
 
 // --- MongoDB connection ---
 const connectDB = async () => {
@@ -200,7 +232,8 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => console.log('User disconnected:', socket.id));
 });
 
-// --- Cron job ---
+// --- Cron jobs ---
+// Clean up expired WhisperWall posts (24 hour auto-delete)
 cron.schedule('0 0 * * *', async () => {
   try {
     const WhisperPost = require('./models/WhisperPost');
@@ -208,6 +241,32 @@ cron.schedule('0 0 * * *', async () => {
     console.log(`🧹 Cleared ${deleted.deletedCount} WhisperWall posts`);
   } catch (error) {
     console.error('Error clearing WhisperWall posts:', error);
+  }
+});
+
+// Clean up vanished posts (runs every minute)
+cron.schedule('* * * * *', async () => {
+  try {
+    const WhisperPost = require('./models/WhisperPost');
+    const now = new Date();
+    
+    // Find and delete expired vanish mode posts
+    const expiredPosts = await WhisperPost.find({
+      'vanishMode.enabled': true,
+      'vanishMode.vanishAt': { $lte: now }
+    });
+    
+    if (expiredPosts.length > 0) {
+      const postIds = expiredPosts.map(p => p._id.toString());
+      await WhisperPost.deleteMany({ _id: { $in: postIds } });
+      
+      // Emit socket event to notify clients
+      io.emit('whispers:vanished', { postIds });
+      
+      console.log(`⏱️ Deleted ${expiredPosts.length} vanished posts`);
+    }
+  } catch (error) {
+    console.error('Error cleaning vanished posts:', error);
   }
 });
 
@@ -223,6 +282,31 @@ app.get('/api/test', (req, res) => {
     timestamp: new Date().toISOString(),
     port: PORT || 3001
   });
+});
+
+// --- Test video endpoint ---
+app.get('/api/test-video', (req, res) => {
+  const fs = require('fs');
+  const videoPath = path.join(__dirname, 'uploads/videos/71260391-2089-4f55-b153-2000f6ab692a.mp4');
+  
+  if (!fs.existsSync(videoPath)) {
+    return res.status(404).json({ success: false, message: 'Video file not found' });
+  }
+  
+  const stat = fs.statSync(videoPath);
+  res.json({
+    success: true,
+    message: 'Video file exists',
+    path: videoPath,
+    size: stat.size,
+    sizeInMB: (stat.size / (1024 * 1024)).toFixed(2),
+    url: `http://192.168.10.2:5000/uploads/videos/71260391-2089-4f55-b153-2000f6ab692a.mp4`
+  });
+});
+
+// --- Test video page ---
+app.get('/test-video-page', (req, res) => {
+  res.sendFile(path.join(__dirname, 'test-video.html'));
 });
 
 app.post('/api/test', (req, res) => {

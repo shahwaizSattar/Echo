@@ -4,8 +4,30 @@ const User = require('../models/User');
 const Notification = require('../models/Notification');
 const { authenticateToken, optionalAuth } = require('../middleware/auth');
 const { body, validationResult } = require('express-validator');
+const { moderateContent } = require('../utils/moderationUtils');
 
 const router = express.Router();
+
+// Helper function to get all users that should be blocked (bidirectional)
+async function getBidirectionalBlockedUsers(userId) {
+  const currentUser = await User.findById(userId);
+  if (!currentUser) return [];
+  
+  // Users that current user has blocked
+  const blockedByMe = currentUser.blockedUsers || [];
+  
+  // Users who have blocked the current user (bidirectional blocking)
+  const usersWhoBlockedMe = await User.find({ 
+    blockedUsers: userId 
+  }).select('_id');
+  
+  const blockedMeIds = usersWhoBlockedMe.map(u => u._id);
+  
+  // Combine both lists (users I blocked + users who blocked me)
+  const allBlockedUsers = [...blockedByMe, ...blockedMeIds];
+  
+  return allBlockedUsers;
+}
 
 // POST /api/posts - Create a new post
 router.post('/', authenticateToken, [
@@ -25,7 +47,7 @@ router.post('/', authenticateToken, [
       });
     }
 
-    const { content, category, visibility, disguiseAvatar, vanishMode, tags, poll, interactions, oneTime, geoLocation, locationEnabled } = req.body;
+    const { content, category, visibility, disguiseAvatar, vanishMode, tags, poll, interactions, oneTime, geoLocation, locationEnabled, locationName, rating } = req.body;
     const userId = req.user._id;
 
     // Validate that post has either text, media, voice note, or poll
@@ -39,9 +61,35 @@ router.post('/', authenticateToken, [
       });
     }
 
+    // Moderate content with ML-based classification
+    const moderatedContent = { ...content };
+    if (content.text) {
+      const modResult = moderateContent(content.text);
+      
+      // Block post if severity is BLOCK
+      if (modResult.shouldBlock) {
+        return res.status(403).json({
+          success: false,
+          message: 'Content violates community guidelines and cannot be posted',
+          moderation: {
+            severity: modResult.severity,
+            reason: modResult.reason
+          }
+        });
+      }
+      
+      moderatedContent.isFlagged = modResult.isFlagged;
+      moderatedContent.moderation = {
+        severity: modResult.severity,
+        scores: modResult.scores,
+        reason: modResult.reason,
+        checkedAt: new Date()
+      };
+    }
+
     const postData = {
       author: userId,
-      content,
+      content: moderatedContent,
       category,
       visibility: visibility || 'normal',
       disguiseAvatar: visibility === 'disguise' ? disguiseAvatar : null,
@@ -56,13 +104,31 @@ router.post('/', authenticateToken, [
     if (locationEnabled && geoLocation && geoLocation.coordinates && geoLocation.coordinates.length === 2) {
       postData.geoLocation = geoLocation;
       postData.locationEnabled = true;
+      if (locationName) {
+        postData.locationName = locationName;
+        console.log('📌 Saving locationName:', locationName);
+      }
+    }
+
+    // Add rating if provided (for review posts)
+    if (rating && rating >= 1 && rating <= 5) {
+      postData.rating = rating;
+      console.log('⭐ Saving rating:', rating);
     }
 
     const post = new Post(postData);
 
-    console.log('💾 Saving post with content:', JSON.stringify(content, null, 2)); // Debug log
+    console.log('💾 Saving post with data:', JSON.stringify({
+      locationEnabled: postData.locationEnabled,
+      locationName: postData.locationName,
+      rating: postData.rating,
+      hasGeoLocation: !!postData.geoLocation
+    }, null, 2));
+    
     await post.save();
-    console.log('✅ Post saved with ID:', post._id); // Debug log
+    console.log('✅ Post saved with ID:', post._id);
+    console.log('✅ Saved post locationName:', post.locationName);
+    console.log('✅ Saved post rating:', post.rating);
 
     // Update user stats
     await User.findByIdAndUpdate(userId, {
@@ -120,8 +186,10 @@ router.get('/feed', authenticateToken, async (req, res) => {
     // Get current user to access muted/blocked lists
     const currentUser = await User.findById(userId);
     const mutedUsers = currentUser.mutedUsers || [];
-    const blockedUsers = currentUser.blockedUsers || [];
     const hiddenPosts = currentUser.hiddenPosts || [];
+    
+    // Get bidirectional blocked users (users I blocked + users who blocked me)
+    const blockedUsers = await getBidirectionalBlockedUsers(userId);
 
     // Build dynamic source filters
     const followingIds = Array.isArray(req.user.following) ? req.user.following : [];
@@ -137,6 +205,7 @@ router.get('/feed', authenticateToken, async (req, res) => {
       isHidden: false,
       _id: { $nin: hiddenPosts }, // Exclude hidden posts
       author: { $nin: [...mutedUsers, ...blockedUsers] }, // Exclude muted and blocked users
+      locationEnabled: { $ne: true }, // Exclude City Radar posts from home feed
       $or: [
         { 'vanishMode.enabled': false },
         { 'vanishMode.vanishAt': { $gt: new Date() } }
@@ -208,7 +277,7 @@ router.get('/feed', authenticateToken, async (req, res) => {
   }
 });
 
-// GET /api/posts/search - Search posts
+// GET /api/posts/search - Search posts (searches entire database, excludes blocked users)
 router.get('/search', optionalAuth, async (req, res) => {
   try {
     const { q, category, page = 1, limit = 20 } = req.query;
@@ -245,11 +314,26 @@ router.get('/search', optionalAuth, async (req, res) => {
       searchQuery.$and[0].category = category;
     }
 
+    // Exclude blocked users (bidirectional) if authenticated
+    if (req.user) {
+      const currentUser = await User.findById(req.user._id);
+      const mutedUsers = currentUser.mutedUsers || [];
+      const blockedUsers = await getBidirectionalBlockedUsers(req.user._id);
+      
+      console.log(`🔍 Post search: query="${q}", blocked count=${blockedUsers.length}, muted count=${mutedUsers.length}`);
+      
+      searchQuery.$and.push({
+        author: { $nin: [...mutedUsers, ...blockedUsers] }
+      });
+    }
+
     const posts = await Post.find(searchQuery)
       .populate('author', 'username avatar')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
+
+    console.log(`🔍 Post search results: found ${posts.length} posts`);
 
     // Add user reaction info if authenticated
     let postsWithUserReactions = posts;
@@ -270,6 +354,7 @@ router.get('/search', optionalAuth, async (req, res) => {
     res.json({
       success: true,
       posts: postsWithUserReactions,
+      data: postsWithUserReactions, // Add data field for consistency
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
@@ -295,6 +380,7 @@ router.get('/explore', optionalAuth, async (req, res) => {
     let sortCriteria = {};
     let matchCriteria = {
       isHidden: false,
+      locationEnabled: { $ne: true }, // Exclude City Radar posts from explore
       $or: [
         { 'vanishMode.enabled': false },
         { 'vanishMode.vanishAt': { $gt: new Date() } }
@@ -303,6 +389,15 @@ router.get('/explore', optionalAuth, async (req, res) => {
 
     if (category) {
       matchCriteria.category = category;
+    }
+
+    // Exclude blocked users (bidirectional) if authenticated
+    if (req.user) {
+      const currentUser = await User.findById(req.user._id);
+      const mutedUsers = currentUser.mutedUsers || [];
+      const blockedUsers = await getBidirectionalBlockedUsers(req.user._id);
+      
+      matchCriteria.author = { $nin: [...mutedUsers, ...blockedUsers] };
     }
 
     switch (filter) {
@@ -443,9 +538,13 @@ router.post('/:postId/comments', authenticateToken, [
       });
     }
 
+    // Moderate comment content
+    const modResult = moderateContent(content);
+    
     const comment = {
       author: userId,
       content,
+      isFlagged: modResult.isFlagged,
       isAnonymous: isAnonymous || false,
       createdAt: new Date(),
       reactions: { funny: [], love: [] }

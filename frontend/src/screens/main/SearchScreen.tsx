@@ -103,11 +103,11 @@ const SearchScreen: React.FC = () => {
     try {
       const allResults: SearchResult[] = [];
 
-      // Search for users
+      // Search for users (searches entire database, excludes blocked users)
       try {
         // Remove @ symbol from query for user search
         const cleanQuery = query.replace(/^@/, '');
-        console.log('🔍 Searching for users with query:', cleanQuery);
+        console.log('🔍 Searching entire user database with query:', cleanQuery);
         const userResponse = await userAPI.searchUsers(cleanQuery);
         console.log('🔍 User search response:', userResponse);
         if (userResponse.success && userResponse.users) {
@@ -130,10 +130,13 @@ const SearchScreen: React.FC = () => {
         console.log('🔍 User search error:', error);
       }
 
-      // Search for posts
+      // Search for posts (searches entire database, excludes blocked users)
       try {
-        const postResponse = await postsAPI.searchPosts(query, 1, 10);
+        console.log('🔍 Searching entire post database with query:', query);
+        const postResponse = await postsAPI.searchPosts(query, 1, 20);
+        console.log('🔍 Post search response:', postResponse);
         if (postResponse.success && postResponse.data) {
+          console.log('🔍 Found posts:', postResponse.data.length);
           const postResults: SearchResult[] = postResponse.data.map((post: any) => ({
             _id: post._id,
             type: 'post' as const,
@@ -147,7 +150,7 @@ const SearchScreen: React.FC = () => {
           allResults.push(...postResults);
         }
       } catch (error) {
-        console.log('Post search error:', error);
+        console.log('🔍 Post search error:', error);
       }
 
       // Add hashtag suggestions if query starts with #
@@ -406,7 +409,7 @@ const SearchScreen: React.FC = () => {
         </TouchableOpacity>
         <TextInput
           style={styles.searchInput}
-          placeholder="Search posts, users, hashtags..."
+          placeholder="Search all posts, users, hashtags..."
           placeholderTextColor={theme.colors.textSecondary}
           value={searchQuery}
           onChangeText={setSearchQuery}
