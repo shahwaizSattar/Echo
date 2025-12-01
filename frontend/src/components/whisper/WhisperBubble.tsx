@@ -12,6 +12,7 @@ import {
 import { BlurView } from 'expo-blur';
 import { WhisperTheme } from '../../utils/whisperThemes';
 import VanishTimer from './VanishTimer';
+import { getFullMediaUrl, handleMediaError } from '../../utils/mediaUtils';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -393,9 +394,10 @@ const WhisperBubble: React.FC<WhisperBubbleProps> = ({ whisper, index, theme, on
           {hasImage && (
             <Image
               source={{ 
-                uri: whisper.content.media[0].url,
+                uri: getFullMediaUrl(whisper.content.media[0].url),
                 cache: 'force-cache',
               }}
+              onError={(error) => handleMediaError(error, 'image', whisper.content.media[0].url)}
               style={styles.stickyImage}
               resizeMode="cover"
               loadingIndicatorSource={require('../../../assets/icon.png')}

@@ -8,22 +8,23 @@ const getBaseURL = () => {
   const envBase = (process as any)?.env?.EXPO_PUBLIC_API_BASE as string | undefined;
   if (envBase) return envBase.endsWith('/api') ? envBase : `${envBase}/api`;
 
-  if (!__DEV__) return 'https://echo-yddc.onrender.com/api';
+  if (!__DEV__) return 'https://whisperecho-backend-production.up.railway.app/api';
 
-  // Development defaults per platform
-  const YOUR_COMPUTER_IP = '192.168.10.2'; // ✅ Updated to match current backend IP
+  // Get IP and port from environment variables
+  const SERVER_IP = (process as any)?.env?.EXPO_PUBLIC_SERVER_IP || '172.20.10.2';
+  const SERVER_PORT = (process as any)?.env?.EXPO_PUBLIC_SERVER_PORT || '5000';
 
   if (Platform.OS === 'web') {
-    return `http://localhost:5000/api`;
+    return `http://${SERVER_IP}:${SERVER_PORT}/api`;
   }
 
   // Android emulator special loopback
   if (Platform.OS === 'android') {
-    return `http://10.0.2.2:5000/api`;
+    return `http://10.0.2.2:${SERVER_PORT}/api`;
   }
 
   // iOS simulator can use localhost; physical device needs LAN IP
-  return `http://${YOUR_COMPUTER_IP}:5000/api`;
+  return `http://${SERVER_IP}:${SERVER_PORT}/api`;
 };
 
 const BASE_URL = getBaseURL();

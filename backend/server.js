@@ -35,6 +35,9 @@ const locationRoutes = require('./routes/location');
 // Upload middleware
 const { uploadMiddleware, getFileUrl } = require('./middleware/upload');
 
+// Validation middleware
+const { sanitizeInput } = require('./middleware/validation');
+
 // Fake IP middleware
 const fakeIpMiddleware = require('./middleware/fakeIp');
 
@@ -93,6 +96,9 @@ app.use(session({
 // --- Body parser ---
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// --- Input sanitization ---
+app.use(sanitizeInput);
 
 // --- Request logging middleware ---
 app.use((req, res, next) => {
@@ -183,6 +189,16 @@ const connectDB = async () => {
   }
 };
 connectDB();
+
+// --- Health check endpoint ---
+app.get('/health', (req, res) => {
+  res.status(200).json({ 
+    status: 'OK', 
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
 
 // --- Routes ---
 app.use('/api/auth', authLimiter, authRoutes);
@@ -306,7 +322,7 @@ app.get('/api/test-video', (req, res) => {
     path: videoPath,
     size: stat.size,
     sizeInMB: (stat.size / (1024 * 1024)).toFixed(2),
-    url: `http://192.168.10.2:5000/uploads/videos/71260391-2089-4f55-b153-2000f6ab692a.mp4`
+    url: `http://${process.env.SERVER_IP || '172.20.10.2'}:${PORT}/uploads/videos/71260391-2089-4f55-b153-2000f6ab692a.mp4`
   });
 });
 
@@ -328,10 +344,10 @@ app.post('/api/test', (req, res) => {
 
 // --- Start server ---
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, '0.0.0.0', () => {
+server.listen(PORT, process.env.SERVER_HOST || '0.0.0.0', () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`🔗 Health check: http://localhost:${PORT}/health`);
-  console.log(`📱 Mobile access: http://192.168.10.2:${PORT}/health`);
+  console.log(`📱 Mobile access: http://${process.env.SERVER_IP || '172.20.10.2'}:${PORT}/health`);
 });
 
 module.exports = { app, io };

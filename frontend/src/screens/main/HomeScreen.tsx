@@ -27,6 +27,7 @@ import { RootStackParamList } from '../../types/navigation';
 import Toast from 'react-native-toast-message';
 import NotificationBell from '../../components/NotificationBell';
 import MessageBell from '../../components/MessageBell';
+import { getFullMediaUrl, handleMediaError } from '../../utils/mediaUtils';
 import ReactionPopup from '../../components/ReactionPopup';
 import PostOptions from '../../components/PostOptions';
 import UserPostOptions from '../../components/UserPostOptions';
@@ -1206,6 +1207,8 @@ const HomeScreen: React.FC = () => {
 
   const playVoiceNote = async (postId: string, voiceUrl: string, effect?: string) => {
     try {
+      console.log('🎤 Playing voice note:', { postId, voiceUrl, fullUrl: getFullMediaUrl(voiceUrl), effect });
+      
       // If already playing, pause it
       if (voiceNotePlaying[postId] && voiceSounds[postId]) {
         await voiceSounds[postId].pauseAsync();
@@ -1237,7 +1240,7 @@ const HomeScreen: React.FC = () => {
       const playbackSettings = getVoiceEffectSettings(effect);
 
       const { sound } = await Audio.Sound.createAsync(
-        { uri: voiceUrl },
+        { uri: getFullMediaUrl(voiceUrl) },
         { 
           shouldPlay: true,
           ...playbackSettings
@@ -1452,17 +1455,14 @@ const HomeScreen: React.FC = () => {
             {media[0].type === 'video' ? (
               <View style={styles.videoContainer}>
                 <Video
-                  source={{ uri: media[0].url }}
+                  source={{ uri: getFullMediaUrl(media[0].url) }}
                   style={[styles.mediaContent, { width: imageWidth, height: imageHeight }]}
                   useNativeControls
                   resizeMode={ResizeMode.CONTAIN}
                   isLooping={false}
                   shouldPlay={false}
                   isMuted={false}
-                  onError={(error) => {
-                    console.log('❌ Video load error:', error, 'URL:', media[0].url);
-                    console.log('❌ Full error object:', JSON.stringify(error, null, 2));
-                  }}
+                  onError={(error) => handleMediaError(error, 'video', media[0].url)}
                   onLoad={() => console.log('✅ Video loaded successfully:', media[0].url)}
                   onLoadStart={() => console.log('🔄 Video loading started:', media[0].url)}
                   onReadyForDisplay={() => console.log('📺 Video ready for display:', media[0].url)}
@@ -1470,10 +1470,10 @@ const HomeScreen: React.FC = () => {
               </View>
             ) : (
               <Image 
-                source={{ uri: media[0].url }} 
+                source={{ uri: getFullMediaUrl(media[0].url) }} 
                 style={[styles.mediaContent, { width: imageWidth, height: imageHeight }]} 
                 resizeMode="cover"
-                onError={(error) => console.log('❌ Image load error:', error.nativeEvent.error, 'URL:', media[0].url)}
+                onError={(error) => handleMediaError(error, 'image', media[0].url)}
                 onLoad={() => console.log('✅ Image loaded successfully:', media[0].url)}
               />
             )}

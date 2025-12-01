@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 
 // Get current IP from command line or use default
 const OLD_IP = process.argv[2] || '192.168.10.13';
-const NEW_IP = process.argv[3] || '192.168.10.2';
+const NEW_IP = process.argv[3] || process.env.SERVER_IP || '192.168.10.2';
 
 console.log(`🔧 Fixing media URLs from ${OLD_IP} to ${NEW_IP}...`);
 

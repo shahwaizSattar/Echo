@@ -39,8 +39,11 @@ router.get('/profile/:username', async (req, res) => {
 
 // PUT /api/user/profile - Update user profile
 router.put('/profile', authenticateToken, [
-  body('bio').optional().isLength({ max: 500 }),
-  body('preferences').optional().isArray()
+  body('bio').optional().isLength({ max: 500 }).withMessage('Bio must not exceed 500 characters'),
+  body('preferences').optional().isArray().withMessage('Preferences must be an array'),
+  body('preferences.*').optional().isIn(['Gaming', 'Education', 'Beauty', 'Fitness', 'Music', 'Technology', 
+    'Art', 'Food', 'Travel', 'Sports', 'Movies', 'Books', 'Fashion',
+    'Photography', 'Comedy', 'Science', 'Politics', 'Business']).withMessage('Invalid preference category')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);

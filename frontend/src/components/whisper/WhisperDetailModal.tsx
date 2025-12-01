@@ -19,6 +19,7 @@ import { whisperWallAPI } from '../../services/api';
 import Toast from 'react-native-toast-message';
 import { WhisperTheme } from '../../utils/whisperThemes';
 import WhisperBackgroundAnimation from './WhisperBackgroundAnimation';
+import { getFullMediaUrl, handleMediaError } from '../../utils/mediaUtils';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -540,9 +541,10 @@ const WhisperDetailModal: React.FC<WhisperDetailModalProps> = ({
             {/* Whisper Image */}
             {whisper.content?.media && whisper.content.media.length > 0 && (
               <Image
-                source={{ uri: whisper.content.media[0].url }}
+                source={{ uri: getFullMediaUrl(whisper.content.media[0].url) }}
                 style={styles.whisperImage}
                 resizeMode="cover"
+                onError={(error) => handleMediaError(error, 'image', whisper.content.media[0].url)}
               />
             )}
 

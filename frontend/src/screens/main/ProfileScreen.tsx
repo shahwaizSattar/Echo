@@ -19,6 +19,7 @@ import { useAuth } from '../../context/AuthContext';
 import { postsAPI, whisperWallAPI, userAPI } from '../../services/api';
 import Toast from 'react-native-toast-message';
 import { censorText } from '../../utils/censorUtils';
+import { getFullMediaUrl, handleMediaError } from '../../utils/mediaUtils';
 import AvatarRenderer from '../../components/avatar/AvatarRenderer';
 import { DEFAULT_AVATAR_CONFIG } from '../../utils/avatarConfig';
 import WhisperBubble from '../../components/whisper/WhisperBubble';
@@ -244,7 +245,7 @@ const ProfileScreen: React.FC = () => {
       const playbackSettings = getVoiceEffectSettings(effect);
 
       const { sound } = await Audio.Sound.createAsync(
-        { uri: voiceUrl },
+        { uri: getFullMediaUrl(voiceUrl) },
         { 
           shouldPlay: true,
           ...playbackSettings
@@ -1007,9 +1008,10 @@ const ProfileScreen: React.FC = () => {
                   onPress={() => (navigation as any).navigate('PostDetail', { postId: post._id })}
                 >
                   <Image 
-                    source={{ uri: imageMedia?.url }} 
+                    source={{ uri: getFullMediaUrl(imageMedia?.url || '') }} 
                     style={styles.mediaThumbnail}
                     resizeMode="cover"
+                    onError={(error) => handleMediaError(error, 'image', imageMedia?.url || '')}
                   />
                   {index === 5 && getMediaPosts().filter(p => {
                     const media = p.content?.media || [];
@@ -1053,9 +1055,10 @@ const ProfileScreen: React.FC = () => {
                   onPress={() => (navigation as any).navigate('PostDetail', { postId: post._id })}
                 >
                   <Video
-                    source={{ uri: videoMedia?.url }}
+                    source={{ uri: getFullMediaUrl(videoMedia?.url || '') }}
                     style={styles.mediaThumbnail}
                     resizeMode={ResizeMode.COVER}
+                    onError={(error) => handleMediaError(error, 'video', videoMedia?.url || '')}
                     shouldPlay={false}
                   />
                   {index === 5 && getMediaPosts().filter(p => {

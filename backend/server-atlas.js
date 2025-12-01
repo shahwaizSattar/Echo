@@ -271,9 +271,9 @@ const startServer = async () => {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Atlas server running on port ${PORT}`);
     console.log(`🔗 Health check: http://localhost:${PORT}/health`);
-    console.log(`📱 Mobile access: http://192.168.10.2:${PORT}/health`);
+    console.log(`📱 Mobile access: http://${process.env.SERVER_IP || '192.168.10.2'}:${PORT}/health`);
     console.log(`🧪 Test endpoint: http://localhost:${PORT}/api/test`);
-    console.log(`📱 Mobile API: http://192.168.10.2:${PORT}/api/test`);
+    console.log(`📱 Mobile API: http://${process.env.SERVER_IP || '192.168.10.2'}:${PORT}/api/test`);
   });
 };
 

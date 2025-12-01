@@ -29,6 +29,18 @@ const authenticateToken = async (req, res, next) => {
     req.user = user; // attach user to request
     next();
   } catch (error) {
+    if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid token'
+      });
+    }
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({
+        success: false,
+        message: 'Token expired'
+      });
+    }
     console.error('Authentication error:', error);
     res.status(500).json({
       success: false,

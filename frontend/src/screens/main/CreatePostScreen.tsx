@@ -21,6 +21,7 @@ import { postsAPI, mediaAPI } from '../../services/api';
 import Toast from 'react-native-toast-message';
 import * as ImagePicker from 'expo-image-picker';
 import { Audio } from 'expo-av';
+import { requestAudioPermission } from '../../utils/mediaUtils';
 
 const CreatePostScreen: React.FC = () => {
   const { theme } = useTheme();
@@ -343,9 +344,8 @@ const CreatePostScreen: React.FC = () => {
 
   const startRecording = async () => {
     try {
-      const permission = await Audio.requestPermissionsAsync();
-      if (permission.status !== 'granted') {
-        Toast.show({ type: 'error', text1: 'Permission Required', text2: 'Microphone access needed' });
+      const hasPermission = await requestAudioPermission();
+      if (!hasPermission) {
         return;
       }
 

@@ -8,6 +8,7 @@ import { useAuth } from '../../context/AuthContext';
 import { chatAPI, mediaAPI } from '../../services/api';
 import { getSocket } from '../../services/socket';
 import Toast from 'react-native-toast-message';
+import { getFullMediaUrl, playAudioWithPermission, handleMediaError, requestAudioPermission } from '../../utils/mediaUtils';
 import ReactionPopup from '../../components/ReactionPopup';
 import * as ImagePicker from 'expo-image-picker';
 import { Video } from 'expo-av';
@@ -577,9 +578,8 @@ const ChatScreen: React.FC = () => {
 
   const startRecording = async () => {
     try {
-      const { status } = await Audio.requestPermissionsAsync();
-      if (status !== 'granted') {
-        Toast.show({ type: 'error', text1: 'Permission denied', text2: 'Please allow microphone access' });
+      const hasPermission = await requestAudioPermission();
+      if (!hasPermission) {
         return;
       }
 
@@ -662,36 +662,34 @@ const ChatScreen: React.FC = () => {
         return;
       }
 
-      // Load and play new audio
-      const { sound } = await Audio.Sound.createAsync(
-        { uri: audioUrl },
-        { shouldPlay: true },
-        (status) => {
-          if (status.isLoaded) {
-            setAudioStatus(prev => ({
-              ...prev,
-              [messageId]: {
-                isPlaying: status.isPlaying,
-                duration: status.durationMillis || 0,
-                position: status.positionMillis || 0,
-              }
-            }));
-            
-            if (status.didJustFinish) {
-              setPlayingAudio(prev => {
-                const newState = { ...prev };
-                delete newState[messageId];
-                return newState;
-              });
+      // Use the new audio utility with permission handling
+      const sound = await playAudioWithPermission(audioUrl, (status) => {
+        if (status.isLoaded) {
+          setAudioStatus(prev => ({
+            ...prev,
+            [messageId]: {
+              isPlaying: status.isPlaying,
+              duration: status.durationMillis || 0,
+              position: status.positionMillis || 0,
             }
+          }));
+          
+          if (status.didJustFinish) {
+            setPlayingAudio(prev => {
+              const newState = { ...prev };
+              delete newState[messageId];
+              return newState;
+            });
           }
         }
-      );
+      });
 
-      setPlayingAudio(prev => ({ ...prev, [messageId]: sound }));
+      if (sound) {
+        setPlayingAudio(prev => ({ ...prev, [messageId]: sound }));
+      }
     } catch (error) {
       console.error('Error playing audio:', error);
-      Toast.show({ type: 'error', text1: 'Error', text2: 'Failed to play audio' });
+      handleMediaError(error, 'audio', audioUrl);
     }
   };
 
@@ -842,16 +840,22 @@ const ChatScreen: React.FC = () => {
                   return (
                     <View key={idx} style={mediaItem.type === 'audio' ? {} : styles.mediaContainer}>
                       {mediaItem.type === 'image' ? (
-                        <TouchableOpacity onPress={() => setFullscreenMedia({ url: mediaItem.url, type: 'image' })}>
-                          <Image source={{ uri: mediaItem.url }} style={styles.messageImage} resizeMode="cover" />
+                        <TouchableOpacity onPress={() => setFullscreenMedia({ url: getFullMediaUrl(mediaItem.url), type: 'image' })}>
+                          <Image 
+                            source={{ uri: getFullMediaUrl(mediaItem.url) }} 
+                            style={styles.messageImage} 
+                            resizeMode="cover"
+                            onError={(error) => handleMediaError(error, 'image', mediaItem.url)}
+                          />
                         </TouchableOpacity>
                       ) : mediaItem.type === 'video' ? (
-                        <TouchableOpacity onPress={() => setFullscreenMedia({ url: mediaItem.url, type: 'video' })}>
+                        <TouchableOpacity onPress={() => setFullscreenMedia({ url: getFullMediaUrl(mediaItem.url), type: 'video' })}>
                           <Video
-                            source={{ uri: mediaItem.url }}
+                            source={{ uri: getFullMediaUrl(mediaItem.url) }}
                             style={styles.messageVideo}
                             useNativeControls={false}
                             isLooping={false}
+                            onError={(error) => handleMediaError(error, 'video', mediaItem.url)}
                           />
                           <View style={styles.videoOverlay}>
                             <View style={styles.videoPlayButton}>
@@ -996,12 +1000,17 @@ const ChatScreen: React.FC = () => {
               {selectedMedia.map((media, idx) => (
                 <View key={idx} style={styles.mediaPreviewItem}>
                   {media.type === 'image' ? (
-                    <Image source={{ uri: media.url }} style={styles.mediaPreviewImage} />
+                    <Image 
+                      source={{ uri: getFullMediaUrl(media.url) }} 
+                      style={styles.mediaPreviewImage}
+                      onError={(error) => handleMediaError(error, 'image', media.url)}
+                    />
                   ) : media.type === 'video' ? (
                     <Video
-                      source={{ uri: media.url }}
+                      source={{ uri: getFullMediaUrl(media.url) }}
                       style={styles.mediaPreviewImage}
                       shouldPlay={false}
+                      onError={(error) => handleMediaError(error, 'video', media.url)}
                     />
                   ) : (
                     <View style={{ width: '100%', height: '100%', backgroundColor: theme.colors.primary, justifyContent: 'center', alignItems: 'center' }}>

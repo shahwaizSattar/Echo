@@ -20,6 +20,7 @@ import Animated, {
 import Toast from 'react-native-toast-message';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
+import AuthBackground from '../../components/auth/AuthBackground';
 
 const SignupScreen: React.FC = () => {
   const navigation = useNavigation();
@@ -391,6 +392,7 @@ const SignupScreen: React.FC = () => {
       }
       style={styles.container}
     >
+      <AuthBackground variant="signup" />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.container}

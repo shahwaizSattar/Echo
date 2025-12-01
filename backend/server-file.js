@@ -178,9 +178,9 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`💾 Data storage: JSON files (PERSISTENT)`);
   console.log(`📁 Storage location: backend/storage/`);
   console.log(`🔗 Health check: http://localhost:${PORT}/health`);
-  console.log(`📱 Mobile access: http://192.168.10.2:${PORT}/health`);
+  console.log(`📱 Mobile access: http://${process.env.SERVER_IP || '192.168.10.2'}:${PORT}/health`);
   console.log(`🧪 Test endpoint: http://localhost:${PORT}/api/test`);
-  console.log(`📱 Mobile API: http://192.168.10.2:${PORT}/api/test`);
+  console.log(`📱 Mobile API: http://${process.env.SERVER_IP || '192.168.10.2'}:${PORT}/api/test`);
   console.log(`✅ Your data will be saved and persist between restarts!`);
 });
 

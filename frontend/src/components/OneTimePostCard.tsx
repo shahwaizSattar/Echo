@@ -4,6 +4,7 @@ import { useTheme } from '../context/ThemeContext';
 import ParticleNoiseReveal from './ParticleNoiseReveal';
 import { postsAPI } from '../services/api';
 import Toast from 'react-native-toast-message';
+import { getFullMediaUrl, handleMediaError } from '../utils/mediaUtils';
 
 interface OneTimePostCardProps {
   post: any;
@@ -121,9 +122,10 @@ const OneTimePostCard: React.FC<OneTimePostCardProps> = ({ post, onReveal }) => 
       {post.content?.media && post.content.media.length > 0 && (
         <View style={styles.mediaContainer}>
           <Image
-            source={{ uri: post.content.media[0].url }}
+            source={{ uri: getFullMediaUrl(post.content.media[0].url) }}
             style={styles.blurredMedia}
             blurRadius={revealed ? 0 : 25}
+            onError={(error) => handleMediaError(error, 'image', post.content.media[0].url)}
           />
           {!revealed && (
             <View style={styles.blurOverlay}>

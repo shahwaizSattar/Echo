@@ -21,6 +21,7 @@ import Toast from 'react-native-toast-message';
 import { locationAPI, postsAPI } from '../../services/api';
 import LocationPostModal from '../../components/LocationPostModal';
 import { Video, ResizeMode } from 'expo-av';
+import { getFullMediaUrl, handleMediaError } from '../../utils/mediaUtils';
 
 const { width, height } = Dimensions.get('window');
 
@@ -869,14 +870,16 @@ const CityRadarScreen: React.FC = () => {
                 >
                   {post.content.media[0].type === 'image' ? (
                     <Image
-                      source={{ uri: post.content.media[0].url }}
+                      source={{ uri: getFullMediaUrl(post.content.media[0].url) }}
                       style={[styles.postMedia, { marginTop: 0, marginBottom: 0 }]}
+                      onError={(error) => handleMediaError(error, 'image', post.content.media[0].url)}
                     />
                   ) : (
                     <Video
-                      source={{ uri: post.content.media[0].url }}
+                      source={{ uri: getFullMediaUrl(post.content.media[0].url) }}
                       style={[styles.postMedia, { marginTop: 0, marginBottom: 0 }]}
                       useNativeControls
+                      onError={(error) => handleMediaError(error, 'video', post.content.media[0].url)}
                       resizeMode={ResizeMode.CONTAIN}
                     />
                   )}

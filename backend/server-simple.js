@@ -41,7 +41,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Simple server running on port ${PORT}`);
   console.log(`📱 Ready for testing without database!`);
   console.log(`🔗 Health check: http://localhost:${PORT}/health`);
-  console.log(`📱 Mobile access: http://192.168.10.2:${PORT}/health`);
+  console.log(`📱 Mobile access: http://${process.env.SERVER_IP || '192.168.10.2'}:${PORT}/health`);
 });
 
 module.exports = app;

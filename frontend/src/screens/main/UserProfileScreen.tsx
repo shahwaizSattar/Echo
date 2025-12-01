@@ -16,6 +16,7 @@ import OneTimePostCard from '../../components/OneTimePostCard';
 import { convertAvatarUrl } from '../../utils/imageUtils';
 import { censorText } from '../../utils/censorUtils';
 import { formatTimeAgo } from '../../utils/timeUtils';
+import { getFullMediaUrl, handleMediaError } from '../../utils/mediaUtils';
 
 type UserProfileRouteProp = RouteProp<RootStackParamList, 'UserProfile'>;
 
@@ -435,7 +436,7 @@ const UserProfileScreen: React.FC = () => {
       const playbackSettings = getVoiceEffectSettings(effect);
 
       const { sound } = await Audio.Sound.createAsync(
-        { uri: voiceUrl },
+        { uri: getFullMediaUrl(voiceUrl) },
         { 
           shouldPlay: true,
           ...playbackSettings
@@ -538,18 +539,20 @@ const UserProfileScreen: React.FC = () => {
             {media[0].type === 'video' ? (
               <View style={styles.videoContainer}>
                 <Video
-                  source={{ uri: media[0].url }}
+                  source={{ uri: getFullMediaUrl(media[0].url) }}
                   style={[styles.mediaContent, { width: imageWidth, height: imageHeight }]}
                   useNativeControls
                   resizeMode={ResizeMode.CONTAIN}
                   isLooping={false}
+                  onError={(error) => handleMediaError(error, 'video', media[0].url)}
                 />
               </View>
             ) : (
               <Image 
-                source={{ uri: media[0].url }} 
+                source={{ uri: getFullMediaUrl(media[0].url) }} 
                 style={[styles.mediaContent, { width: imageWidth, height: imageHeight }]} 
                 resizeMode="cover"
+                onError={(error) => handleMediaError(error, 'image', media[0].url)}
               />
             )}
           </View>

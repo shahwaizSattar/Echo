@@ -31,11 +31,13 @@ async function getBidirectionalBlockedUsers(userId) {
 
 // POST /api/posts - Create a new post
 router.post('/', authenticateToken, [
-  body('content.text').optional().isLength({ max: 2000 }),
-  body('content.media').optional().isArray(),
-  body('category').notEmpty().isIn(['Gaming', 'Education', 'Beauty', 'Fitness', 'Music', 'Technology', 
+  body('content.text').optional().isLength({ max: 2000 }).withMessage('Post content must not exceed 2000 characters'),
+  body('content.media').optional().isArray().withMessage('Media must be an array'),
+  body('category').notEmpty().withMessage('Category is required').isIn(['Gaming', 'Education', 'Beauty', 'Fitness', 'Music', 'Technology', 
     'Art', 'Food', 'Travel', 'Sports', 'Movies', 'Books', 'Fashion',
-    'Photography', 'Comedy', 'Science', 'Politics', 'Business'])
+    'Photography', 'Comedy', 'Science', 'Politics', 'Business']).withMessage('Invalid category'),
+  body('tags').optional().isArray().withMessage('Tags must be an array'),
+  body('tags.*').optional().isLength({ max: 50 }).withMessage('Each tag must not exceed 50 characters')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);

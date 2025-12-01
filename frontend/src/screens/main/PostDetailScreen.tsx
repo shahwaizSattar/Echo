@@ -23,6 +23,7 @@ import { RootStackParamList } from '../../types/navigation';
 import Toast from 'react-native-toast-message';
 import { convertAvatarUrl } from '../../utils/imageUtils';
 import { censorText } from '../../utils/censorUtils';
+import { getFullMediaUrl, handleMediaError } from '../../utils/mediaUtils';
 import { formatTimeAgo } from '../../utils/timeUtils';
 
 type PostDetailScreenRouteProp = RouteProp<RootStackParamList, 'PostDetail'>;
@@ -696,7 +697,7 @@ const PostDetailScreen = () => {
       const playbackSettings = getVoiceEffectSettings(effect);
 
       const { sound } = await Audio.Sound.createAsync(
-        { uri: voiceUrl },
+        { uri: getFullMediaUrl(voiceUrl) },
         { 
           shouldPlay: true,
           ...playbackSettings
@@ -888,19 +889,20 @@ const PostDetailScreen = () => {
               <View style={styles.mediaItem}>
                 {isVideo ? (
                   <Video
-                    source={{ uri: item.url }}
+                    source={{ uri: getFullMediaUrl(item.url) }}
                     style={[styles.mediaContent, { width: screenWidth, height: mediaHeight }]}
                     useNativeControls
                     resizeMode={ResizeMode.CONTAIN}
                     isLooping={false}
-                    onError={(error) => console.log('❌ Video load error:', error, 'URL:', item.url)}
+                    onError={(error) => handleMediaError(error, 'video', item.url)}
                     onLoad={() => console.log('✅ Video loaded successfully:', item.url)}
                   />
                 ) : (
                   <Image
-                    source={{ uri: item.url }}
+                    source={{ uri: getFullMediaUrl(item.url) }}
                     style={[styles.mediaContent, { width: screenWidth, height: mediaHeight }]}
                     resizeMode="cover"
+                    onError={(error) => handleMediaError(error, 'image', item.url)}
                   />
                 )}
               </View>
