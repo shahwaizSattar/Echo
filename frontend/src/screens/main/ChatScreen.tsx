@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Image, Animated, Pressable, Dimensions, Keyboard, ScrollView, Modal } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Image, Animated, Pressable, Dimensions, Keyboard, ScrollView, Modal, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../../context/ThemeContext';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
@@ -9,6 +9,7 @@ import { chatAPI, mediaAPI } from '../../services/api';
 import { getSocket } from '../../services/socket';
 import Toast from 'react-native-toast-message';
 import { getFullMediaUrl, playAudioWithPermission, handleMediaError, requestAudioPermission } from '../../utils/mediaUtils';
+// Removed iOS picker fix imports - using direct ImagePicker instead
 import ReactionPopup from '../../components/ReactionPopup';
 import * as ImagePicker from 'expo-image-picker';
 import { Video } from 'expo-av';
@@ -66,12 +67,13 @@ const ChatScreen: React.FC = () => {
   const [uploading, setUploading] = useState(false);
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [isRecording, setIsRecording] = useState(false);
-
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
-  const [showMediaOptions, setShowMediaOptions] = useState(false);
   const [playingAudio, setPlayingAudio] = useState<{ [key: string]: Audio.Sound }>({});
   const [audioStatus, setAudioStatus] = useState<{ [key: string]: { isPlaying: boolean; duration: number; position: number } }>({});
   const [fullscreenMedia, setFullscreenMedia] = useState<{ url: string; type: 'image' | 'video' } | null>(null);
+  const [previewingAudio, setPreviewingAudio] = useState<{ [key: string]: Audio.Sound }>({});
   const listRef = useRef<FlatList<MessageItem>>(null);
   const [actionFor, setActionFor] = useState<{ id: string; text: string; position: { x: number; y: number } } | null>(null);
   const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
@@ -223,6 +225,26 @@ const ChatScreen: React.FC = () => {
       fontSize: 11,
       opacity: 0.8,
     },
+    audioProgress: {
+      fontSize: 10,
+      opacity: 0.6,
+      marginTop: 2,
+    },
+    recordingTimer: {
+      fontSize: 16,
+      fontWeight: '700',
+      fontFamily: 'monospace',
+      color: '#ff4444',
+    },
+    audioPreviewContainer: {
+      backgroundColor: 'rgba(0,0,0,0.05)',
+      borderRadius: 8,
+      padding: 8,
+      marginTop: 4,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
     mediaContainer: {
       marginTop: 4,
       borderRadius: 8,
@@ -251,7 +273,34 @@ const ChatScreen: React.FC = () => {
       paddingVertical: 10,
       marginRight: 8,
     },
-
+    emojiButton: {
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      marginRight: 8,
+    },
+    emojiPickerModal: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      justifyContent: 'flex-end',
+    },
+    emojiPickerContainer: {
+      backgroundColor: theme.colors.surface,
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
+      paddingTop: 20,
+      paddingBottom: 40,
+      maxHeight: '50%',
+    },
+    emojiGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      padding: 16,
+      gap: 8,
+    },
+    emojiItem: {
+      fontSize: 32,
+      padding: 8,
+    },
     attachMenuModal: {
       flex: 1,
       backgroundColor: 'rgba(0,0,0,0.5)',
@@ -471,221 +520,413 @@ const ChatScreen: React.FC = () => {
           await sound.unloadAsync();
         } catch (e) {}
       });
+      
+      // Clean up preview audio players
+      Object.values(previewingAudio).forEach(async (sound) => {
+        try {
+          await sound.stopAsync();
+          await sound.unloadAsync();
+        } catch (e) {}
+      });
     };
   }, [peerId, user?._id, playingAudio]);
 
-  const openMediaOptions = () => {
-    setShowMediaOptions(true);
-  };
+  // Recording timer effect
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isRecording) {
+      interval = setInterval(() => {
+        setRecordingDuration(prev => prev + 1000);
+      }, 1000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isRecording]);
 
-  const pickFromGallery = async () => {
+  const requestMediaPermissions = async () => {
     try {
-      console.log('📷 Opening gallery...');
-      
-      // Check permissions first
+      console.log('🔐 Requesting media library permissions...');
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      console.log('📋 Media library permission status:', status);
+      console.log('📸 Media permission response:', { status });
       
-      if (status !== 'granted') {
-        console.log('❌ Media permission denied');
-        Toast.show({ type: 'error', text1: 'Permission denied', text2: 'Please allow media access in settings' });
-        return;
+      if (status === 'granted') {
+        console.log('✅ Media permission granted');
+        return true;
       }
-
-      console.log('✅ Media permission granted, launching gallery...');
       
-      const options = {
-        mediaTypes: ['images', 'videos'] as any,
-        allowsMultipleSelection: true,
-        quality: 0.8,
-        videoMaxDuration: 60,
-        allowsEditing: false,
-      };
-      
-      console.log('📋 Gallery options:', options);
-      
-      const result = await ImagePicker.launchImageLibraryAsync(options);
-      console.log('📱 Gallery result received');
-      
-      await handleMediaResult(result);
+      Alert.alert('Permission Required', 'Camera roll permission is needed.', [{ text: 'OK' }]);
+      return false;
     } catch (error) {
-      console.error('❌ Gallery picker error:', error);
-      Toast.show({ type: 'error', text1: 'Error', text2: 'Failed to open gallery' });
-      setUploading(false);
+      console.error('❌ Error requesting media permissions:', error);
+      Toast.show({ type: 'error', text1: 'Error', text2: 'Failed to request gallery permission' });
+      return false;
     }
   };
 
-  const takePhoto = async () => {
-    try {
-      console.log('📸 Opening camera...');
-      
-      // Check permissions first
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      console.log('📋 Camera permission status:', status);
-      
-      if (status !== 'granted') {
-        console.log('❌ Camera permission denied');
-        Toast.show({ type: 'error', text1: 'Permission denied', text2: 'Please allow camera access in settings' });
+
+
+  const selectMedia = async () => {
+    if (Platform.OS === 'web') {
+      // Web file upload with better error handling
+      try {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*,video/*,audio/*';
+        input.multiple = true;
+        input.style.display = 'none';
+        
+        // Add to DOM temporarily
+        document.body.appendChild(input);
+        
+        input.onchange = (e) => {
+          const files = (e.target as HTMLInputElement).files;
+          if (files && files.length > 0) {
+            console.log('🌐 Files selected:', files.length);
+            handleWebFiles(files);
+          } else {
+            console.log('🌐 No files selected');
+          }
+          // Clean up
+          document.body.removeChild(input);
+        };
+        
+        input.oncancel = () => {
+          console.log('🌐 File selection canceled');
+          document.body.removeChild(input);
+        };
+        
+        // Trigger file picker
+        input.click();
+      } catch (error) {
+        console.error('❌ Web file picker error:', error);
+        Toast.show({ 
+          type: 'error', 
+          text1: 'File Picker Error', 
+          text2: 'Failed to open file picker. Please try again.' 
+        });
+      }
+    } else {
+      // Mobile file picker - use Alert like CreatePostScreen (which works)
+      const hasPermission = await requestMediaPermissions();
+      if (!hasPermission) return;
+
+      Alert.alert('Select Media', 'Choose how to add media', [
+        { text: 'Camera', onPress: () => openCamera() },
+        { text: 'Gallery', onPress: () => openGallery() },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    }
+  };
+
+  const handleWebFiles = (files: FileList) => {
+    console.log('🌐 Processing web files:', files.length);
+    
+    Array.from(files).forEach((file, index) => {
+      if (selectedMedia.length >= 5) {
+        Toast.show({ type: 'error', text1: 'Limit Reached', text2: 'Max 5 media per message' });
         return;
       }
 
-      console.log('✅ Camera permission granted, launching camera...');
-      
-      const options = {
-        mediaTypes: ['images', 'videos'] as any,
-        quality: 0.8,
-        videoMaxDuration: 60,
-        allowsEditing: false,
+      console.log(`🌐 Processing web file ${index + 1}:`, {
+        name: file.name,
+        type: file.type,
+        size: file.size
+      });
+
+      // Validate file type
+      if (!file.type.startsWith('image/') && !file.type.startsWith('video/') && !file.type.startsWith('audio/')) {
+        Toast.show({ 
+          type: 'error', 
+          text1: 'Invalid File Type', 
+          text2: `${file.name} is not a supported media file` 
+        });
+        return;
+      }
+
+      // Validate file size (50MB limit)
+      if (file.size > 50 * 1024 * 1024) {
+        Toast.show({ 
+          type: 'error', 
+          text1: 'File Too Large', 
+          text2: `${file.name} exceeds 50MB limit` 
+        });
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const result = e.target?.result as string;
+        if (!result) {
+          console.error('❌ Failed to read file:', file.name);
+          Toast.show({ type: 'error', text1: 'Read Error', text2: `Failed to read ${file.name}` });
+          return;
+        }
+
+        const mediaItem = {
+          uri: result,
+          type: file.type,
+          name: file.name,
+          mediaType: file.type.startsWith('video/') ? 'video' as const : 'photo' as const,
+        };
+        
+        console.log('✅ File read successfully:', file.name);
+        uploadMediaItem(mediaItem);
       };
       
-      console.log('📋 Camera options:', options);
+      reader.onerror = (error) => {
+        console.error('❌ FileReader error:', error);
+        Toast.show({ type: 'error', text1: 'Read Error', text2: `Failed to read ${file.name}` });
+      };
       
-      const result = await ImagePicker.launchCameraAsync(options);
-      console.log('📱 Camera result received');
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const openCamera = async () => {
+    try {
+      console.log('📷 Opening camera...');
       
-      await handleMediaResult(result);
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images', 'videos'],
+        allowsEditing: false, // Disable editing to prevent iOS issues
+        quality: 0.8,
+        videoMaxDuration: 60,
+        exif: false,
+      });
+
+      console.log('📷 Camera result - canceled:', result.canceled, 'assets:', result.assets?.length || 0);
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        console.log('📷 Camera asset:', result.assets[0]);
+        addMediaToSelection(result.assets[0]);
+      } else {
+        console.log('📷 Camera selection canceled by user');
+      }
     } catch (error) {
       console.error('❌ Camera error:', error);
       Toast.show({ type: 'error', text1: 'Error', text2: 'Failed to open camera' });
+    }
+  };
+
+  const openGallery = async () => {
+    try {
+      console.log('📱 Opening gallery...');
+      
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images', 'videos'],
+        allowsEditing: false, // Fix the warning about allowsEditing + allowsMultipleSelection
+        quality: 0.8,
+        allowsMultipleSelection: true,
+        selectionLimit: 5,
+        exif: false,
+      });
+
+      console.log('📱 Gallery result - canceled:', result.canceled, 'assets:', result.assets?.length || 0);
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        console.log('📱 Selected assets count:', result.assets.length);
+        result.assets.forEach((asset, idx) => {
+          console.log(`📱 Asset ${idx + 1}:`, asset);
+          addMediaToSelection(asset);
+        });
+      } else {
+        console.log('📱 Gallery selection canceled by user');
+      }
+    } catch (error) {
+      console.error('❌ Gallery error:', error);
+      Toast.show({ type: 'error', text1: 'Error', text2: 'Failed to open gallery' });
+    }
+  };
+
+  const addMediaToSelection = (asset: any) => {
+    if (selectedMedia.length >= 5) {
+      Toast.show({ type: 'error', text1: 'Limit Reached', text2: 'Max 5 media per message' });
+      return;
+    }
+
+    console.log('📸 Media selected:', { uri: asset.uri, type: asset.type });
+    
+    const mediaItem = {
+      uri: asset.uri,
+      type: asset.type === 'video' ? 'video/mp4' : 'image/jpeg',
+      name: asset.fileName || `media_${Date.now()}.${asset.type === 'video' ? 'mp4' : 'jpg'}`,
+      mediaType: asset.type as 'photo' | 'video',
+    };
+    
+    uploadMediaItem(mediaItem);
+  };
+
+  const uploadMediaItem = async (mediaItem: any) => {
+    try {
+      console.log('📤 Uploading media item:', {
+        name: mediaItem.name,
+        type: mediaItem.type,
+        mediaType: mediaItem.mediaType,
+        uriLength: mediaItem.uri?.length || 0,
+        isDataUrl: mediaItem.uri?.startsWith('data:') || false
+      });
+      
+      setUploading(true);
+      
+      // Add retry logic for uploads
+      let uploadRes;
+      let retryCount = 0;
+      const maxRetries = 3;
+      
+      while (retryCount < maxRetries) {
+        try {
+          uploadRes = await mediaAPI.uploadMultiple([mediaItem]);
+          break; // Success, exit retry loop
+        } catch (error: any) {
+          retryCount++;
+          console.warn(`⚠️ Upload attempt ${retryCount} failed:`, error?.message);
+          
+          if (retryCount >= maxRetries) {
+            throw error; // Re-throw on final attempt
+          }
+          
+          // Wait before retry (exponential backoff)
+          await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+        }
+      }
+      
+      console.log('📥 Upload response:', {
+        success: uploadRes?.success,
+        message: uploadRes?.message,
+        filesCount: (uploadRes as any)?.files?.length || 0
+      });
+      
+      const responseFiles = (uploadRes as any)?.files;
+      
+      if (uploadRes?.success && responseFiles && Array.isArray(responseFiles) && responseFiles.length > 0) {
+        const uploadedMedia = responseFiles.map((file: any) => {
+          const mimeType = file.mimetype || '';
+          const mediaUrl = file.url || file.filename || file.path;
+          console.log('📎 Uploaded file:', {
+            filename: file.filename,
+            url: mediaUrl,
+            mimetype: mimeType
+          });
+          
+          return {
+            url: mediaUrl,
+            type: mimeType.startsWith('video/') ? 'video' as const : 
+                  mimeType.startsWith('audio/') ? 'audio' as const : 'image' as const,
+            filename: file.filename || file.name,
+            originalName: file.originalname || file.name,
+            size: file.size || 0
+          };
+        });
+        
+        console.log('✅ Media uploaded successfully:', uploadedMedia.length, 'files');
+        setSelectedMedia(prev => [...prev, ...uploadedMedia]);
+        Toast.show({ type: 'success', text1: 'Media added', text2: 'Ready to send' });
+      } else {
+        const errorMessage = uploadRes?.message || 'Upload returned no files';
+        console.error('❌ Upload failed - invalid response:', uploadRes);
+        Toast.show({ type: 'error', text1: 'Upload failed', text2: errorMessage });
+      }
+    } catch (error: any) {
+      console.error('❌ Upload error:', {
+        fullError: error,
+        message: error?.message,
+        code: error?.code,
+        status: error?.response?.status,
+        statusText: error?.response?.statusText,
+        responseData: error?.response?.data,
+        config: error?.config?.url,
+        networkError: error?.code === 'NETWORK_ERROR' || error?.message?.includes('Network Error'),
+      });
+      
+      let errorMsg = 'Failed to upload media';
+      
+      // Handle network errors specifically
+      if (error?.code === 'NETWORK_ERROR' || error?.message?.includes('Network Error')) {
+        errorMsg = 'Network error. Please check your connection and try again.';
+      } else if (error?.response?.status === 413) {
+        errorMsg = 'File too large. Please select a smaller file.';
+      } else if (error?.response?.status === 400) {
+        errorMsg = error?.response?.data?.message || 'Invalid file format or size.';
+      } else if (error?.response?.status === 500) {
+        errorMsg = 'Server error. Please try again later.';
+      } else if (error?.response?.data?.message) {
+        errorMsg = error.response.data.message;
+      } else if (error?.response?.data?.error) {
+        errorMsg = error.response.data.error;
+      } else if (error?.message) {
+        errorMsg = error.message;
+      }
+      
+      console.error('📌 Final error message to user:', errorMsg);
+      Toast.show({ type: 'error', text1: 'Upload failed', text2: errorMsg });
+    } finally {
       setUploading(false);
     }
   };
 
-  const handleMediaResult = async (result: any) => {
-    console.log('📱 Media result:', JSON.stringify(result, null, 2));
-
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      setUploading(true);
-      Toast.show({ type: 'info', text1: 'Uploading...', text2: `Processing ${result.assets.length} file(s)` });
-      
-      try {
-        console.log('📋 Processing assets:', result.assets);
-        
-        const files = result.assets.map((asset: any, index: number) => {
-          console.log(`📄 Asset ${index}:`, {
-            uri: asset.uri,
-            type: asset.type,
-            fileName: asset.fileName,
-            width: asset.width,
-            height: asset.height,
-            mimeType: asset.mimeType
-          });
-          
-          // Determine media type from asset type or mimeType
-          const isVideo = asset.type === 'video' || asset.mimeType?.startsWith('video/');
-          const mediaType = isVideo ? 'video' : 'photo';
-          const fileType = isVideo ? 'video/mp4' : 'image/jpeg';
-          const extension = isVideo ? 'mp4' : 'jpg';
-          
-          return {
-            uri: asset.uri,
-            type: fileType,
-            name: asset.fileName || `media_${Date.now()}_${index}.${extension}`,
-            mediaType: mediaType as 'photo' | 'video',
-          };
-        });
-
-        console.log('📤 Uploading files:', files.map((f: any) => ({ name: f.name, type: f.type, mediaType: f.mediaType, uri: f.uri.substring(0, 50) + '...' })));
-        
-        const uploadRes = await mediaAPI.uploadMultiple(files);
-        console.log('📥 Upload response:', uploadRes);
-        
-        const responseFiles = (uploadRes as any).files;
-        if (uploadRes.success && responseFiles && responseFiles.length > 0) {
-          const mediaItems = responseFiles.map((file: any) => ({
-            url: file.url,
-            type: file.mimetype?.startsWith('video/') ? 'video' as const : 'image' as const,
-            filename: file.filename,
-            originalName: file.originalname,
-            size: file.size
-          }));
-          console.log('✅ Media items processed:', mediaItems);
-          setSelectedMedia(prev => [...prev, ...mediaItems]);
-          Toast.show({ type: 'success', text1: 'Media ready!', text2: `${mediaItems.length} file(s) ready to send` });
-        } else {
-          console.error('❌ Upload failed - no files returned:', uploadRes);
-          Toast.show({ type: 'error', text1: 'Upload failed', text2: uploadRes.message || 'No files returned from server' });
-        }
-      } catch (error: any) {
-        console.error('❌ Upload error:', error);
-        const errorMessage = error?.response?.data?.message || error?.message || 'Failed to upload media';
-        Toast.show({ type: 'error', text1: 'Upload failed', text2: errorMessage });
-      } finally {
-        setUploading(false);
-      }
-    } else {
-      console.log('📷 Media selection cancelled or no assets selected. Result:', {
-        canceled: result.canceled,
-        assets: result.assets?.length || 0
-      });
-    }
-  };
-
-
+  const COMMON_EMOJIS = [
+    '😀', '😃', '😄', '😁', '😅', '😂', '🤣', '😊', '😇', '🙂',
+    '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋',
+    '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🥳', '😏',
+    '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣', '😖', '😫',
+    '😩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤬', '🤯', '😳',
+    '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗', '🤔', '🤭',
+    '🤫', '🤥', '😶', '😐', '😑', '😬', '🙄', '😯', '😦', '😧',
+    '😮', '😲', '🥱', '😴', '🤤', '😪', '😵', '🤐', '🥴', '🤢',
+    '🤮', '🤧', '😷', '🤒', '🤕', '🤑', '🤠', '👍', '👎', '👌',
+    '✌️', '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆', '👇', '☝️',
+    '✋', '🤚', '🖐️', '🖖', '👋', '🤝', '💪', '🙏', '✍️', '💅',
+    '❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔',
+    '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟', '☮️',
+    '⭐', '🌟', '✨', '⚡', '🔥', '💥', '☄️', '🌈', '☀️', '🌤️',
+    '⛅', '🌥️', '☁️', '🌦️', '🌧️', '⛈️', '🌩️', '🌨️', '❄️', '☃️',
+  ];
 
   const startRecording = async () => {
     try {
-      console.log('🎤 Starting audio recording...');
       const hasPermission = await requestAudioPermission();
       if (!hasPermission) {
-        Toast.show({ type: 'error', text1: 'Permission denied', text2: 'Please allow microphone access' });
         return;
       }
 
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
-        staysActiveInBackground: false,
-        shouldDuckAndroid: true,
-        playThroughEarpieceAndroid: false,
       });
 
-      const recordingOptions = Audio.RecordingOptionsPresets.HIGH_QUALITY;
-
-      const { recording } = await Audio.Recording.createAsync(recordingOptions);
+      const { recording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
       setRecording(recording);
       setIsRecording(true);
-      Toast.show({ type: 'info', text1: 'Recording...', text2: 'Tap the microphone again to stop' });
-      console.log('✅ Recording started successfully');
+      setRecordingDuration(0);
+      Toast.show({ type: 'info', text1: 'Recording...', text2: 'Tap again to stop' });
     } catch (error) {
-      console.error('❌ Failed to start recording:', error);
-      Toast.show({ type: 'error', text1: 'Recording Error', text2: 'Failed to start recording. Please try again.' });
-      setIsRecording(false);
-      setRecording(null);
+      console.error('Failed to start recording:', error);
+      Toast.show({ type: 'error', text1: 'Error', text2: 'Failed to start recording' });
     }
   };
 
   const stopRecording = async () => {
-    if (!recording) {
-      console.log('⚠️ No recording to stop');
-      return;
-    }
+    if (!recording) return;
 
     try {
-      console.log('🛑 Stopping audio recording...');
       setIsRecording(false);
       await recording.stopAndUnloadAsync();
       const uri = recording.getURI();
-      console.log('📁 Recording saved to:', uri);
       
       if (uri) {
         setUploading(true);
-        Toast.show({ type: 'info', text1: 'Uploading...', text2: 'Processing your voice note' });
-        
         const file = {
           uri,
           type: 'audio/m4a',
-          name: `voice_note_${Date.now()}.m4a`,
-          mediaType: 'photo' as 'photo' | 'video', // This is required by the upload API
+          name: `audio_${Date.now()}.m4a`,
+          mediaType: 'photo' as 'photo' | 'video',
         };
 
-        console.log('📤 Uploading voice note:', file);
         const uploadRes = await mediaAPI.uploadMultiple([file]);
-        console.log('📥 Upload response:', uploadRes);
+        const responseFiles = (uploadRes as any)?.files;
         
-        const responseFiles = (uploadRes as any).files;
-        
-        if (uploadRes.success && responseFiles && responseFiles.length > 0) {
+        if (uploadRes?.success && responseFiles && Array.isArray(responseFiles)) {
           const mediaItems = responseFiles.map((file: any) => ({
             url: file.url,
             type: 'audio' as const,
@@ -693,26 +934,21 @@ const ChatScreen: React.FC = () => {
             originalName: file.originalname,
             size: file.size
           }));
-          console.log('✅ Voice note processed:', mediaItems);
           setSelectedMedia(prev => [...prev, ...mediaItems]);
-          Toast.show({ type: 'success', text1: 'Voice note ready!', text2: 'Tap send to share your message' });
+          Toast.show({ type: 'success', text1: 'Audio recorded', text2: 'Ready to send' });
         } else {
-          console.error('❌ Upload failed - no files returned');
-          Toast.show({ type: 'error', text1: 'Upload failed', text2: 'Could not process voice note' });
+          console.error('❌ Audio upload failed:', uploadRes);
+          Toast.show({ type: 'error', text1: 'Upload failed', text2: uploadRes?.message || 'Failed to upload audio' });
         }
-      } else {
-        console.error('❌ No recording URI available');
-        Toast.show({ type: 'error', text1: 'Recording Error', text2: 'Could not save voice note' });
+        setUploading(false);
       }
-      
-      setUploading(false);
       setRecording(null);
+      setRecordingDuration(0);
     } catch (error) {
-      console.error('❌ Failed to stop recording:', error);
-      Toast.show({ type: 'error', text1: 'Recording Error', text2: 'Failed to save voice note. Please try again.' });
-      setIsRecording(false);
+      console.error('Failed to stop recording:', error);
+      Toast.show({ type: 'error', text1: 'Error', text2: 'Failed to save recording' });
       setRecording(null);
-      setUploading(false);
+      setRecordingDuration(0);
     }
   };
 
@@ -775,33 +1011,69 @@ const ChatScreen: React.FC = () => {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const previewAudio = async (audioUrl: string, mediaIndex: number) => {
+    try {
+      const previewKey = `preview_${mediaIndex}`;
+      
+      // Stop any currently playing preview
+      if (previewingAudio[previewKey]) {
+        await previewingAudio[previewKey].stopAsync();
+        await previewingAudio[previewKey].unloadAsync();
+        const newPreviewing = { ...previewingAudio };
+        delete newPreviewing[previewKey];
+        setPreviewingAudio(newPreviewing);
+        return;
+      }
+
+      // Use the audio utility with permission handling
+      const sound = await playAudioWithPermission(audioUrl, (status) => {
+        if (status.isLoaded) {
+          setAudioStatus(prev => ({
+            ...prev,
+            [previewKey]: {
+              isPlaying: status.isPlaying,
+              duration: status.durationMillis || 0,
+              position: status.positionMillis || 0,
+            }
+          }));
+          
+          if (status.didJustFinish) {
+            setPreviewingAudio(prev => {
+              const newState = { ...prev };
+              delete newState[previewKey];
+              return newState;
+            });
+          }
+        }
+      });
+
+      if (sound) {
+        setPreviewingAudio(prev => ({ ...prev, [previewKey]: sound }));
+      }
+    } catch (error) {
+      console.error('Error previewing audio:', error);
+      handleMediaError(error, 'audio', audioUrl);
+    }
+  };
+
   const sendMessage = () => {
     console.log('📤 sendMessage called, input:', input, 'selectedMedia:', selectedMedia.length);
     const trimmed = input.trim();
     if (!trimmed && selectedMedia.length === 0) {
       console.log('⚠️ Empty message, not sending');
-      Toast.show({ type: 'info', text1: 'Empty message', text2: 'Please type a message or select media' });
       return;
     }
     
-    if (uploading) {
-      console.log('⚠️ Upload in progress, not sending');
-      Toast.show({ type: 'info', text1: 'Please wait', text2: 'Media is still uploading' });
-      return;
-    }
-    
-    console.log('✅ Sending message with text:', trimmed, 'and media:', selectedMedia);
+    console.log('✅ Sending message:', trimmed);
     const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     const newMsg: MessageItem = {
       id: tempId,
       text: trimmed,
-      media: [...selectedMedia], // Create a copy
+      media: selectedMedia,
       createdAt: new Date().toISOString(),
       senderId: user?._id || 'me',
       reactions: [],
     };
-    
-    // Add message to UI immediately
     setMessages(prev => {
       const updated = [...prev, newMsg];
       requestAnimationFrame(() => {
@@ -809,14 +1081,9 @@ const ChatScreen: React.FC = () => {
       });
       return updated;
     });
-    
-    // Clear input and media
     setInput('');
-    const mediaToSend = [...selectedMedia];
     setSelectedMedia([]);
-    
-    // Send to server
-    chatAPI.sendMessage(peerId, trimmed, mediaToSend.length > 0 ? mediaToSend : undefined)
+    chatAPI.sendMessage(peerId, trimmed, selectedMedia.length > 0 ? selectedMedia : undefined)
       .then((res: any) => {
         console.log('✅ Message sent successfully:', res);
         const serverMsg = res?.data?.message || res?.message;
@@ -825,24 +1092,15 @@ const ChatScreen: React.FC = () => {
         if (serverId) {
           setMessages(prev => {
             // Replace temp message with server message
-            return prev.map(m => m.id === tempId ? { 
-              ...m, 
-              id: serverId, 
-              createdAt: serverCreatedAt || m.createdAt,
-              media: serverMsg?.media || m.media // Use server media if available
-            } : m);
+            return prev.map(m => m.id === tempId ? { ...m, id: serverId, createdAt: serverCreatedAt || m.createdAt } : m);
           });
         }
       })
       .catch((e: any) => {
         console.error('❌ Failed to send message:', e);
-        const errorMsg = e?.response?.data?.message || e?.message || 'Failed to send message';
-        // Remove the failed message from UI
+        const msg = e?.response?.data?.message || 'Failed to send message';
         setMessages(prev => prev.filter(m => m.id !== tempId));
-        // Restore the media and input if send failed
-        setSelectedMedia(mediaToSend);
-        setInput(trimmed);
-        Toast.show({ type: 'error', text1: 'Send failed', text2: errorMsg });
+        Toast.show({ type: 'error', text1: 'Error', text2: msg });
       });
   };
 
@@ -934,6 +1192,7 @@ const ChatScreen: React.FC = () => {
                   const status = audioStatus[audioKey];
                   const isPlaying = status?.isPlaying || false;
                   const duration = status?.duration || 0;
+                  const position = status?.position || 0;
                   
                   return (
                     <View key={idx} style={mediaItem.type === 'audio' ? {} : styles.mediaContainer}>
@@ -983,10 +1242,27 @@ const ChatScreen: React.FC = () => {
                                 />
                               ))}
                             </View>
+                            <View style={{ marginTop: 4, alignItems: 'center' }}>
+                              <Text style={{ fontSize: 8, color: isMe ? theme.colors.textInverse : theme.colors.text, opacity: 0.7 }}>
+                                🎤 Voice Message
+                              </Text>
+                            </View>
                           </View>
-                          <Text style={[styles.audioDuration, { color: isMe ? theme.colors.textInverse : theme.colors.text }]}>
-                            {duration > 0 ? formatDuration(duration) : '0:00'}
-                          </Text>
+                          <View style={{ alignItems: 'flex-end' }}>
+                            <Text style={[styles.audioDuration, { color: isMe ? theme.colors.textInverse : theme.colors.text, fontFamily: 'monospace', fontWeight: '700' }]}>
+                              {duration > 0 ? formatDuration(duration) : '0:00'}
+                            </Text>
+                            {isPlaying && position > 0 && (
+                              <Text style={[styles.audioProgress, { color: isMe ? theme.colors.textInverse : theme.colors.text, fontFamily: 'monospace' }]}>
+                                {formatDuration(position)} / {formatDuration(duration)}
+                              </Text>
+                            )}
+                            {!isPlaying && duration > 0 && (
+                              <Text style={[styles.audioProgress, { color: isMe ? theme.colors.textInverse : theme.colors.text, opacity: 0.6 }]}>
+                                Tap to play
+                              </Text>
+                            )}
+                          </View>
                         </View>
                       )}
                     </View>
@@ -1028,7 +1304,15 @@ const ChatScreen: React.FC = () => {
     <SafeAreaView style={styles.container} edges={['top']}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.header}>
-        <TouchableOpacity onPress={() => { chatAPI.markRead(peerId).then(() => refreshUnreadCount()).finally(() => (navigation as any).goBack()); }} style={{ marginRight: 12 }}>
+        <TouchableOpacity onPress={() => { 
+          chatAPI.markRead(peerId).then(() => refreshUnreadCount()).finally(() => {
+            if (navigation.canGoBack()) {
+              navigation.goBack();
+            } else {
+              navigation.navigate('Messages' as never);
+            }
+          }); 
+        }} style={{ marginRight: 12 }}>
           <Text style={{ color: theme.colors.primary, fontWeight: '700' }}>Back</Text>
         </TouchableOpacity>
         {avatar ? (
@@ -1095,41 +1379,67 @@ const ChatScreen: React.FC = () => {
         {selectedMedia.length > 0 && !editing && (
           <ScrollView horizontal style={{ maxHeight: 90 }} showsHorizontalScrollIndicator={false}>
             <View style={styles.mediaPreviewContainer}>
-              {selectedMedia.map((media, idx) => (
-                <View key={idx} style={styles.mediaPreviewItem}>
-                  {media.type === 'image' ? (
-                    <Image 
-                      source={{ uri: getFullMediaUrl(media.url) }} 
-                      style={styles.mediaPreviewImage}
-                      onError={(error) => handleMediaError(error, 'image', media.url)}
-                    />
-                  ) : media.type === 'video' ? (
-                    <Video
-                      source={{ uri: getFullMediaUrl(media.url) }}
-                      style={styles.mediaPreviewImage}
-                      shouldPlay={false}
-                      onError={(error) => handleMediaError(error, 'video', media.url)}
-                    />
-                  ) : (
-                    <View style={{ width: '100%', height: '100%', backgroundColor: theme.colors.primary, justifyContent: 'center', alignItems: 'center' }}>
-                      <Text style={{ fontSize: 32 }}>🎤</Text>
-                      <Text style={{ color: theme.colors.textInverse, fontSize: 10, marginTop: 4 }}>Audio</Text>
-                    </View>
-                  )}
-                  <TouchableOpacity
-                    style={styles.removeMediaBtn}
-                    onPress={() => setSelectedMedia(prev => prev.filter((_, i) => i !== idx))}
-                  >
-                    <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold' }}>×</Text>
-                  </TouchableOpacity>
-                </View>
-              ))}
+              {selectedMedia.map((media, idx) => {
+                const previewKey = `preview_${idx}`;
+                const previewStatus = audioStatus[previewKey];
+                const isPreviewPlaying = previewStatus?.isPlaying || false;
+                const previewDuration = previewStatus?.duration || 0;
+                const previewPosition = previewStatus?.position || 0;
+                
+                return (
+                  <View key={idx} style={styles.mediaPreviewItem}>
+                    {media.type === 'image' ? (
+                      <Image 
+                        source={{ uri: getFullMediaUrl(media.url) }} 
+                        style={styles.mediaPreviewImage}
+                        onError={(error) => handleMediaError(error, 'image', media.url)}
+                      />
+                    ) : media.type === 'video' ? (
+                      <Video
+                        source={{ uri: getFullMediaUrl(media.url) }}
+                        style={styles.mediaPreviewImage}
+                        shouldPlay={false}
+                        onError={(error) => handleMediaError(error, 'video', media.url)}
+                      />
+                    ) : (
+                      <TouchableOpacity 
+                        style={{ width: '100%', height: '100%', backgroundColor: theme.colors.primary, justifyContent: 'center', alignItems: 'center', padding: 4 }}
+                        onPress={() => previewAudio(media.url, idx)}
+                      >
+                        <Text style={{ fontSize: 20, marginBottom: 2 }}>{isPreviewPlaying ? '⏸️' : '▶️'}</Text>
+                        <Text style={{ color: theme.colors.textInverse, fontSize: 9, fontWeight: '600', textAlign: 'center' }}>
+                          🎤 Voice
+                        </Text>
+                        <Text style={{ color: theme.colors.textInverse, fontSize: 10, fontWeight: '700', marginTop: 2, fontFamily: 'monospace' }}>
+                          {previewDuration > 0 ? formatDuration(previewDuration) : '0:00'}
+                        </Text>
+                        {isPreviewPlaying && (
+                          <Text style={{ color: theme.colors.textInverse, fontSize: 8, opacity: 0.9, fontFamily: 'monospace' }}>
+                            {formatDuration(previewPosition)}
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                    )}
+                    <TouchableOpacity
+                      style={styles.removeMediaBtn}
+                      onPress={() => setSelectedMedia(prev => prev.filter((_, i) => i !== idx))}
+                    >
+                      <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold' }}>×</Text>
+                    </TouchableOpacity>
+                  </View>
+                );
+              })}
             </View>
           </ScrollView>
         )}
         {isRecording && (
-          <View style={{ paddingHorizontal: 16, paddingVertical: 8, backgroundColor: theme.colors.error + '20', borderRadius: 8, marginBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={{ color: theme.colors.error || '#ff4444', fontSize: 14, fontWeight: '600', marginRight: 8 }}>● Recording...</Text>
+          <View style={{ paddingHorizontal: 16, paddingVertical: 8, backgroundColor: theme.colors.error + '20', borderRadius: 8, marginBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={{ color: theme.colors.error || '#ff4444', fontSize: 14, fontWeight: '600', marginRight: 8 }}>● Recording</Text>
+              <Text style={{ color: theme.colors.error || '#ff4444', fontSize: 16, fontWeight: '700', fontFamily: 'monospace' }}>
+                {formatDuration(recordingDuration)}
+              </Text>
+            </View>
             <TouchableOpacity onPress={stopRecording} style={{ paddingHorizontal: 12, paddingVertical: 4, backgroundColor: theme.colors.error || '#ff4444', borderRadius: 6 }}>
               <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>Stop</Text>
             </TouchableOpacity>
@@ -1137,9 +1447,23 @@ const ChatScreen: React.FC = () => {
         )}
         <View style={styles.composerRow}>
           {!editing && (
-            <TouchableOpacity onPress={() => setShowAttachMenu(true)} style={styles.plusButton} disabled={uploading}>
-              <Text style={{ fontSize: 28, color: theme.colors.primary, fontWeight: 'bold' }}>+</Text>
-            </TouchableOpacity>
+            <>
+              <TouchableOpacity onPress={selectMedia} style={styles.plusButton} disabled={uploading}>
+                <Text style={{ fontSize: 28, color: theme.colors.primary, fontWeight: 'bold' }}>+</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                onPress={toggleRecording} 
+                style={[styles.recordButton, isRecording && { backgroundColor: theme.colors.error + '20' }]} 
+                disabled={uploading}
+              >
+                <Text style={{ 
+                  fontSize: 24, 
+                  color: isRecording ? (theme.colors.error || '#ff4444') : theme.colors.primary 
+                }}>
+                  🎤
+                </Text>
+              </TouchableOpacity>
+            </>
           )}
           <TextInput
             style={styles.input}
@@ -1302,18 +1626,40 @@ const ChatScreen: React.FC = () => {
               style={styles.attachMenuItem}
               onPress={() => {
                 setShowAttachMenu(false);
-                setTimeout(() => openMediaOptions(), 100); // Add small delay to ensure modal closes first
+                openCamera();
               }}
             >
               <Text style={styles.attachMenuIcon}>📷</Text>
-              <Text style={styles.attachMenuText}>Photo or Video</Text>
+              <Text style={styles.attachMenuText}>Camera</Text>
             </TouchableOpacity>
 
             <TouchableOpacity 
               style={styles.attachMenuItem}
               onPress={() => {
                 setShowAttachMenu(false);
-                setTimeout(() => toggleRecording(), 100); // Add small delay to ensure modal closes first
+                openGallery();
+              }}
+            >
+              <Text style={styles.attachMenuIcon}>📎</Text>
+              <Text style={styles.attachMenuText}>Gallery</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.attachMenuItem}
+              onPress={() => {
+                setShowAttachMenu(false);
+                setShowEmojiPicker(true);
+              }}
+            >
+              <Text style={styles.attachMenuIcon}>😊</Text>
+              <Text style={styles.attachMenuText}>Emoji</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.attachMenuItem}
+              onPress={() => {
+                setShowAttachMenu(false);
+                toggleRecording();
               }}
             >
               <Text style={styles.attachMenuIcon}>{isRecording ? '⏹️' : '🎤'}</Text>
@@ -1323,48 +1669,36 @@ const ChatScreen: React.FC = () => {
         </Pressable>
       </Modal>
 
-      {/* Media Options Modal */}
+      {/* Emoji Picker Modal */}
       <Modal
-        visible={showMediaOptions}
+        visible={showEmojiPicker}
         transparent
         animationType="slide"
-        onRequestClose={() => setShowMediaOptions(false)}
+        onRequestClose={() => setShowEmojiPicker(false)}
       >
-        <Pressable style={styles.attachMenuModal} onPress={() => setShowMediaOptions(false)}>
-          <Pressable style={styles.attachMenuContainer} onPress={(e) => e.stopPropagation()}>
-            <View style={{ marginBottom: 16 }}>
-              <Text style={{ color: theme.colors.text, fontSize: 18, fontWeight: '700', paddingHorizontal: 20 }}>Select Media</Text>
+        <Pressable style={styles.emojiPickerModal} onPress={() => setShowEmojiPicker(false)}>
+          <Pressable style={styles.emojiPickerContainer} onPress={(e) => e.stopPropagation()}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginBottom: 10 }}>
+              <Text style={{ color: theme.colors.text, fontSize: 18, fontWeight: '700' }}>Pick an Emoji</Text>
+              <TouchableOpacity onPress={() => setShowEmojiPicker(false)}>
+                <Text style={{ color: theme.colors.text, fontSize: 24 }}>×</Text>
+              </TouchableOpacity>
             </View>
-            
-            <TouchableOpacity 
-              style={styles.attachMenuItem}
-              onPress={() => {
-                setShowMediaOptions(false);
-                setTimeout(() => pickFromGallery(), 100);
-              }}
-            >
-              <Text style={styles.attachMenuIcon}>🖼️</Text>
-              <Text style={styles.attachMenuText}>Gallery</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={styles.attachMenuItem}
-              onPress={() => {
-                setShowMediaOptions(false);
-                setTimeout(() => takePhoto(), 100);
-              }}
-            >
-              <Text style={styles.attachMenuIcon}>📸</Text>
-              <Text style={styles.attachMenuText}>Camera</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={[styles.attachMenuItem, { borderTopWidth: 1, borderTopColor: theme.colors.border, marginTop: 8 }]}
-              onPress={() => setShowMediaOptions(false)}
-            >
-              <Text style={styles.attachMenuIcon}>❌</Text>
-              <Text style={[styles.attachMenuText, { color: theme.colors.textSecondary }]}>Cancel</Text>
-            </TouchableOpacity>
+            <ScrollView>
+              <View style={styles.emojiGrid}>
+                {COMMON_EMOJIS.map((emoji, idx) => (
+                  <TouchableOpacity
+                    key={idx}
+                    onPress={() => {
+                      setInput(prev => prev + emoji);
+                      setShowEmojiPicker(false);
+                    }}
+                  >
+                    <Text style={styles.emojiItem}>{emoji}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
           </Pressable>
         </Pressable>
       </Modal>

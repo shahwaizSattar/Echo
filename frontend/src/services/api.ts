@@ -8,10 +8,10 @@ const getBaseURL = () => {
   const envBase = (process as any)?.env?.EXPO_PUBLIC_API_BASE as string | undefined;
   if (envBase) return envBase.endsWith('/api') ? envBase : `${envBase}/api`;
 
-  if (!__DEV__) return 'https://echo-yddc.onrender.com/api';
+  if (!__DEV__) return 'https://whisperecho-backend-production.up.railway.app/api';
 
   // Get IP and port from environment variables
-  const SERVER_IP = (process as any)?.env?.EXPO_PUBLIC_SERVER_IP || '172.20.10.2';
+  const SERVER_IP = (process as any)?.env?.EXPO_PUBLIC_SERVER_IP || '192.168.10.3';
   const SERVER_PORT = (process as any)?.env?.EXPO_PUBLIC_SERVER_PORT || '5000';
 
   if (Platform.OS === 'web') {
@@ -62,6 +62,13 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    
+    // For FormData, don't set Content-Type (let browser handle it)
+    if (config.data instanceof FormData) {
+      console.log('📤 Detected FormData upload, removing Content-Type header');
+      delete config.headers['Content-Type'];
+    }
+    
     return config;
   },
   (error) => {
@@ -71,8 +78,22 @@ api.interceptors.request.use(
 
 // Response interceptor for error handling
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    if (response.config.data instanceof FormData && response.status === 200) {
+      console.log('✅ FormData upload successful:', response.data);
+    }
+    return response;
+  },
   async (error) => {
+    console.error('❌ API Error:', {
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+      message: error.message,
+      code: error.code,
+      url: error.config?.url,
+    });
+
     if (error.response?.status === 401) {
       // Token expired or invalid
       await AsyncStorage.removeItem('authToken');
@@ -833,34 +854,83 @@ export const mediaAPI = {
     name: string;
     mediaType: 'photo' | 'video';
   }>): Promise<ApiResponse> => {
+    console.log('📤 MediaAPI.uploadMultiple called with files:', files.length);
+    
     const formData = new FormData();
     
     files.forEach((file, index) => {
-      if (file.uri.startsWith('data:')) {
-        // Handle web files (base64 data URLs)
-        const base64Data = file.uri.split(',')[1];
-        const binaryString = atob(base64Data);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
+      console.log(`📁 Processing file ${index + 1}:`, {
+        name: file.name,
+        type: file.type,
+        uri: file.uri.substring(0, 50) + '...',
+        mediaType: file.mediaType,
+        isDataUrl: file.uri.startsWith('data:')
+      });
+      
+      try {
+        if (file.uri.startsWith('data:')) {
+          // Handle web files (base64 data URLs)
+          console.log(`🌐 Converting data URL to blob for ${file.name}`);
+          const parts = file.uri.split(',');
+          
+          if (parts.length < 2) {
+            throw new Error('Invalid data URL format');
+          }
+          
+          // Extract MIME type from data URL
+          const mimeMatch = parts[0].match(/data:([^;]+)/);
+          const detectedMimeType = mimeMatch ? mimeMatch[1] : file.type;
+          
+          const base64Data = parts[1];
+          let binaryString: string;
+          
+          try {
+            binaryString = atob(base64Data);
+          } catch (e) {
+            console.error('❌ Failed to decode base64:', e);
+            throw new Error('Failed to decode base64 data');
+          }
+          
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          
+          const blob = new Blob([bytes], { type: detectedMimeType });
+          console.log(`✅ Created blob for ${file.name}:`, { 
+            size: blob.size, 
+            type: blob.type,
+            originalType: file.type,
+            detectedType: detectedMimeType
+          });
+          
+          // Validate blob size
+          if (blob.size === 0) {
+            throw new Error('Created blob is empty');
+          }
+          
+          formData.append('media', blob, file.name);
+        } else {
+          // Handle mobile files (file URIs)
+          console.log(`📱 Processing mobile file: ${file.name}`);
+          formData.append('media', {
+            uri: file.uri,
+            type: file.type,
+            name: file.name,
+          } as any);
         }
-        const blob = new Blob([bytes], { type: file.type });
-        formData.append('media', blob, file.name);
-      } else {
-        // Handle mobile files (file URIs)
-        formData.append('media', {
-          uri: file.uri,
-          type: file.type,
-          name: file.name,
-        } as any);
+      } catch (error) {
+        console.error(`❌ Error processing file ${index + 1} (${file.name}):`, error);
+        throw new Error(`Failed to process ${file.name}: ${error.message}`);
       }
     });
 
+    console.log('🚀 Sending upload request with FormData...');
     const response: AxiosResponse<ApiResponse> = await api.post('/upload/multiple', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
+      timeout: 60000,
     });
+    
+    console.log('✅ Upload response received:', response.data);
     return response.data;
   },
 };

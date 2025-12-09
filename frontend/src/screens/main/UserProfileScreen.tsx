@@ -436,7 +436,7 @@ const UserProfileScreen: React.FC = () => {
       const playbackSettings = getVoiceEffectSettings(effect);
 
       const { sound } = await Audio.Sound.createAsync(
-        { uri: getFullMediaUrl(voiceUrl) },
+        { uri: voiceUrl },
         { 
           shouldPlay: true,
           ...playbackSettings
@@ -568,7 +568,7 @@ const UserProfileScreen: React.FC = () => {
                 {item.type === 'video' ? (
                   <View style={styles.videoContainer}>
                     <Video
-                      source={{ uri: item.url }}
+                      source={{ uri: getFullMediaUrl(item.url) }}
                       style={[styles.mediaContent, { width: imageWidth * 0.9, height: imageHeight * 0.9 }]}
                       useNativeControls
                       resizeMode={ResizeMode.CONTAIN}
@@ -577,7 +577,7 @@ const UserProfileScreen: React.FC = () => {
                   </View>
                 ) : (
                   <Image 
-                    source={{ uri: item.url }} 
+                    source={{ uri: getFullMediaUrl(item.url) }} 
                     style={[styles.mediaContent, { width: imageWidth * 0.9, height: imageHeight * 0.9 }]} 
                     resizeMode="cover"
                   />

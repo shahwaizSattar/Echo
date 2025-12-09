@@ -1,24 +1,38 @@
 @echo off
-echo ========================================
-echo   Switching to Production Configuration
-echo ========================================
+echo 🚀 Switching to Production Configuration
 echo.
 
-echo Backing up current .env file...
-copy frontend\.env frontend\.env.development
+cd frontend
+
+echo 📋 Current configuration:
+if exist .env (
+    findstr "EXPO_PUBLIC_API_BASE" .env
+) else (
+    echo No .env file found
+)
 
 echo.
-echo Switching to production configuration...
-copy frontend\.env.production frontend\.env
+echo 💾 Backing up current configuration...
+if exist .env copy .env .env.development.backup >nul
+
+echo 🔧 Setting production configuration...
+echo # Production Configuration > .env
+echo EXPO_PUBLIC_API_BASE=https://whisperecho-backend-production.up.railway.app >> .env
 
 echo.
-echo ========================================
-echo   Production Configuration Active
-echo ========================================
-echo API Base: https://echo-yddc.onrender.com
-echo Server: echo-yddc.onrender.com:443
+echo ✅ Switched to production configuration!
+echo 🌐 Backend URL: https://whisperecho-backend-production.up.railway.app
 echo.
-echo To switch back to development:
-echo   run switch-to-development.bat
+echo 🧪 Testing production backend...
+curl -s https://whisperecho-backend-production.up.railway.app/health >nul 2>&1
+if %errorlevel% equ 0 (
+    echo ✅ Production backend is accessible
+) else (
+    echo ❌ Production backend is not accessible
+    echo Please check your internet connection or backend deployment
+)
+
 echo.
-pause
+echo 📱 Ready for production build:
+echo   npm run build
+echo   eas build --platform all

@@ -291,7 +291,7 @@ const CreatePostScreen: React.FC = () => {
   const openCamera = async () => {
     try {
       const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.All,
+        mediaTypes: ['images', 'videos'],
         allowsEditing: true,
         aspect: [16, 9],
         quality: 0.8,
@@ -307,7 +307,7 @@ const CreatePostScreen: React.FC = () => {
   const openGallery = async () => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.All,
+        mediaTypes: ['images', 'videos'],
         allowsEditing: true,
         aspect: [16, 9],
         quality: 0.8,

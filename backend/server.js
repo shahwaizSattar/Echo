@@ -9,6 +9,7 @@ const http = require('http');
 const socketIo = require('socket.io');
 const cron = require('node-cron');
 const path = require('path');
+const fs = require('fs');
 const helmet = require('helmet');
 const session = require('express-session');
 
@@ -210,34 +211,112 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/location', locationRoutes);
 
 // --- Media upload endpoints ---
-app.post('/api/upload/single', uploadMiddleware.single('media'), uploadMiddleware.handleError, (req, res) => {
-  if (!req.file) return res.status(400).json({ success: false, message: 'No file uploaded' });
-  const folder = getMediaFolder(req.file.mimetype);
-  const fileUrl = getFileUrl(req, req.file.filename, folder);
-  res.json({ success: true, message: 'File uploaded', file: { ...req.file, url: fileUrl } });
-});
+app.post('/api/upload/single', uploadMiddleware.single('media'), (req, res) => {
+  console.log('📤 Single upload request received');
+  
+  if (!req.file) {
+    console.log('❌ No file in request');
+    return res.status(400).json({ success: false, message: 'No file uploaded' });
+  }
 
-app.post('/api/upload/multiple', uploadMiddleware.multiple('media', 5), uploadMiddleware.handleError, (req, res) => {
-  if (!req.files || req.files.length === 0) return res.status(400).json({ success: false, message: 'No files uploaded' });
-  const files = req.files.map(file => {
-    const folder = getMediaFolder(file.mimetype);
-    const fileUrl = getFileUrl(req, file.filename, folder);
+  try {
+    const folder = getMediaFolder(req.file.mimetype);
+    const fileUrl = getFileUrl(req, req.file.filename, folder);
     let mediaType = 'image';
-    if (file.mimetype.startsWith('video/')) mediaType = 'video';
-    else if (file.mimetype.startsWith('audio/')) mediaType = 'audio';
+    if (req.file.mimetype.startsWith('video/')) mediaType = 'video';
+    else if (req.file.mimetype.startsWith('audio/')) mediaType = 'audio';
     
-    return { 
+    console.log('📁 Processing single file:', {
+      filename: req.file.filename,
+      mimetype: req.file.mimetype,
+      size: req.file.size,
+      folder,
+      url: fileUrl,
+      type: mediaType
+    });
+    
+    const fileData = {
       url: fileUrl,
       type: mediaType,
-      filename: file.filename,
-      originalname: file.originalname,
-      mimetype: file.mimetype,
-      size: file.size
+      filename: req.file.filename,
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      size: req.file.size
     };
+    
+    console.log('✅ File uploaded successfully');
+    res.json({ success: true, message: 'File uploaded', file: fileData });
+  } catch (error) {
+    console.error('❌ Error processing uploaded file:', error);
+    res.status(500).json({ success: false, message: 'Error processing uploaded file', error: error.message });
+  }
+}, uploadMiddleware.handleError);
+
+app.post('/api/upload/multiple', uploadMiddleware.multiple('media', 5), (req, res) => {
+  console.log('📤 Multiple upload request received');
+  console.log('Request headers:', {
+    'content-type': req.headers['content-type'],
+    'content-length': req.headers['content-length'],
+    'user-agent': req.headers['user-agent']
   });
-  console.log('📤 Files uploaded successfully:', files.length);
-  res.json({ success: true, message: `${files.length} files uploaded`, files });
-});
+  console.log('Files:', req.files ? req.files.length : 0);
+  
+  if (!req.files || req.files.length === 0) {
+    console.log('❌ No files in request');
+    return res.status(400).json({ 
+      success: false, 
+      message: 'No files uploaded. Please select at least one file.',
+      error: 'NO_FILES'
+    });
+  }
+
+  try {
+    const files = req.files.map((file, index) => {
+      console.log(`📁 Processing file ${index + 1}:`, {
+        filename: file.filename,
+        originalname: file.originalname,
+        mimetype: file.mimetype,
+        size: file.size,
+        path: file.path
+      });
+
+      // Validate file exists on disk
+      if (!fs.existsSync(file.path)) {
+        throw new Error(`File ${file.originalname} was not saved properly`);
+      }
+
+      const folder = getMediaFolder(file.mimetype);
+      const fileUrl = getFileUrl(req, file.filename, folder);
+      let mediaType = 'image';
+      if (file.mimetype.startsWith('video/')) mediaType = 'video';
+      else if (file.mimetype.startsWith('audio/')) mediaType = 'audio';
+      
+      return { 
+        url: fileUrl,
+        type: mediaType,
+        filename: file.filename,
+        originalname: file.originalname,
+        mimetype: file.mimetype,
+        size: file.size
+      };
+    });
+    
+    console.log('✅ Files uploaded successfully:', files.length);
+    res.json({ 
+      success: true, 
+      message: `${files.length} file${files.length > 1 ? 's' : ''} uploaded successfully`, 
+      files 
+    });
+  } catch (error) {
+    console.error('❌ Error processing uploaded files:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error processing uploaded files', 
+      error: error.message,
+      details: 'Please try uploading again or contact support if the issue persists.'
+    });
+  }
+}, uploadMiddleware.handleError);
 
 // --- Helper ---
 const getMediaFolder = (mimetype) => {

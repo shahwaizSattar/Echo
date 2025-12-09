@@ -358,7 +358,7 @@ const VanishingCommunityScreen: React.FC = () => {
                 </View>
               ) : (
                 <Image 
-                  source={{ uri: item.url }} 
+                  source={{ uri: getFullMediaUrl(item.url) }} 
                   style={[styles.mediaContent, { width: imageWidth }]} 
                   resizeMode="cover"
                 />

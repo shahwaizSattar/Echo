@@ -697,7 +697,7 @@ const PostDetailScreen = () => {
       const playbackSettings = getVoiceEffectSettings(effect);
 
       const { sound } = await Audio.Sound.createAsync(
-        { uri: getFullMediaUrl(voiceUrl) },
+        { uri: voiceUrl },
         { 
           shouldPlay: true,
           ...playbackSettings

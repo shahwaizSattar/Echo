@@ -20,7 +20,16 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.whisperecho.app"
+      "bundleIdentifier": "com.whisperecho.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "WhisperEcho needs camera access to take photos and videos.",
+        "NSPhotoLibraryUsageDescription": "WhisperEcho needs access to your photo library to share images and videos.",
+        "NSPhotoLibraryAddOnlyUsageDescription": "WhisperEcho needs permission to save photos to your photo library.",
+        "NSMicrophoneUsageDescription": "WhisperEcho needs microphone access to record voice notes.",
+        "NSLocationWhenInUseUsageDescription": "WhisperEcho needs your location for the City Radar feature.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "WhisperEcho needs your location for the City Radar feature.",
+        "NSMotionUsageDescription": "WhisperEcho needs motion access to improve your experience."
+      }
     },
     "android": {
       "adaptiveIcon": {

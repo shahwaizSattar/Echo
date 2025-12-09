@@ -37,6 +37,7 @@ import { convertAvatarUrl } from '../../utils/imageUtils';
 import { censorText } from '../../utils/censorUtils';
 import { formatTimeAgo } from '../../utils/timeUtils';
 import ModeratedContent from '../../components/moderation/ModeratedContent';
+import { Top3ReactionsDisplay } from '../../components/Top3ReactionsDisplay';
 
 type HomeScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Home'>;
 
@@ -1207,8 +1208,6 @@ const HomeScreen: React.FC = () => {
 
   const playVoiceNote = async (postId: string, voiceUrl: string, effect?: string) => {
     try {
-      console.log('🎤 Playing voice note:', { postId, voiceUrl, fullUrl: getFullMediaUrl(voiceUrl), effect });
-      
       // If already playing, pause it
       if (voiceNotePlaying[postId] && voiceSounds[postId]) {
         await voiceSounds[postId].pauseAsync();
@@ -1240,7 +1239,7 @@ const HomeScreen: React.FC = () => {
       const playbackSettings = getVoiceEffectSettings(effect);
 
       const { sound } = await Audio.Sound.createAsync(
-        { uri: getFullMediaUrl(voiceUrl) },
+        { uri: voiceUrl },
         { 
           shouldPlay: true,
           ...playbackSettings
@@ -1493,7 +1492,7 @@ const HomeScreen: React.FC = () => {
                 {item.type === 'video' ? (
                   <View style={styles.videoContainer}>
                     <Video
-                      source={{ uri: item.url }}
+                      source={{ uri: getFullMediaUrl(item.url) }}
                       style={[styles.mediaContent, { width: imageWidth * 0.9, height: imageHeight * 0.9 }]}
                       useNativeControls
                       resizeMode={ResizeMode.CONTAIN}
@@ -1511,7 +1510,7 @@ const HomeScreen: React.FC = () => {
                   </View>
                 ) : (
                   <Image 
-                    source={{ uri: item.url }} 
+                    source={{ uri: getFullMediaUrl(item.url) }} 
                       style={[styles.mediaContent, { width: imageWidth * 0.9, height: imageHeight * 0.9 }]} 
                     resizeMode="cover"
                     onError={(error) => console.log('❌ Image load error:', error.nativeEvent.error, 'URL:', item.url)}
@@ -1924,9 +1923,21 @@ const HomeScreen: React.FC = () => {
               </View>
               
               <View style={styles.postMeta}>
-                <Text style={[styles.reactionText, { color: theme.colors.textSecondary }]}>
-                  {post.reactionCounts?.total || 0} likes • {post.comments?.length || 0} comments
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  {post.reactionCounts && post.reactionCounts.total > 0 && (
+                    <Top3ReactionsDisplay 
+                      reactionCounts={post.reactionCounts}
+                      size="small"
+                      onPress={(e) => {
+                        e?.stopPropagation?.();
+                        navigation.navigate('PostDetail', { postId: post._id });
+                      }}
+                    />
+                  )}
+                  <Text style={[styles.reactionText, { color: theme.colors.textSecondary }]}>
+                    {post.reactionCounts?.total > 0 ? '' : '0 likes'} {post.reactionCounts?.total > 0 && '•'} {post.comments?.length || 0} comments
+                  </Text>
+                </View>
                 {(post.interactions?.reactionsLocked || post.interactions?.commentsLocked) && (
                   <Text style={{ fontSize: 11, color: theme.colors.error, marginTop: 4 }}>
                     🔒 {post.interactions?.reactionsLocked && post.interactions?.commentsLocked 

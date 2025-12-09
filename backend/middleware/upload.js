@@ -55,12 +55,20 @@ const fileFilter = (req, file, cb) => {
     size: file.size
   });
 
+  // Validate file size early (before processing)
+  if (file.size && file.size > 50 * 1024 * 1024) {
+    console.error('❌ File too large:', file.originalname, file.size);
+    return cb(new Error('File too large. Maximum size is 50MB.'), false);
+  }
+
   // Allow images, videos, and audio
   if (file.mimetype.startsWith('image/') || 
       file.mimetype.startsWith('video/') || 
       file.mimetype.startsWith('audio/')) {
+    console.log('✅ File type accepted:', file.mimetype);
     cb(null, true);
   } else {
+    console.error('❌ Invalid file type:', file.mimetype);
     cb(new Error('Only image, video, and audio files are allowed!'), false);
   }
 };
@@ -131,9 +139,9 @@ const uploadMiddleware = {
 };
 
 // Helper function to get file URL
+// Returns relative URL so it works with any IP/domain
 const getFileUrl = (req, filename, folder = 'images') => {
-  const baseUrl = `${req.protocol}://${req.get('host')}`;
-  return `${baseUrl}/uploads/${folder}/${filename}`;
+  return `/uploads/${folder}/${filename}`;
 };
 
 // Helper function to delete file
