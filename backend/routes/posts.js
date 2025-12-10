@@ -64,6 +64,18 @@ router.post('/', authenticateToken, [
       });
     }
 
+    // Validate media objects - remove invalid media items
+    if (content.media && Array.isArray(content.media)) {
+      content.media = content.media.filter(media => {
+        // Remove null/undefined media objects or media with null/empty URLs
+        if (!media || !media.url || media.url.trim() === '') {
+          console.log('🗑️ Removing invalid media object:', media);
+          return false;
+        }
+        return true;
+      });
+    }
+
     // Moderate content with ML-based classification
     const moderatedContent = { ...content };
     if (content.text) {
@@ -172,14 +184,17 @@ router.post('/', authenticateToken, [
 
   } catch (error) {
     console.error('Create post error:', error);
+    console.error('Error stack:', error.stack);
+    console.error('Request body:', JSON.stringify(req.body, null, 2));
     res.status(500).json({
       success: false,
-      message: 'Server error'
+      message: 'Server error',
+      error: error.message
     });
   }
 });
 
-// GET /api/posts/feed - Get user's personalized feed
+// GET /api/posts/feed - Get user's personalized feed (now shows all users' posts)
 router.get('/feed', authenticateToken, async (req, res) => {
   try {
     const { page = 1, limit = 20 } = req.query;
@@ -194,16 +209,7 @@ router.get('/feed', authenticateToken, async (req, res) => {
     // Get bidirectional blocked users (users I blocked + users who blocked me)
     const blockedUsers = await getBidirectionalBlockedUsers(userId);
 
-    // Build dynamic source filters
-    const followingIds = Array.isArray(req.user.following) ? req.user.following : [];
-    const userPrefs = Array.isArray(req.user.preferences) ? req.user.preferences : [];
-
-    const sourceFilters = [];
-    // Include user's own posts
-    sourceFilters.push({ author: userId });
-    if (followingIds.length > 0) sourceFilters.push({ author: { $in: followingIds } });
-    if (userPrefs.length > 0) sourceFilters.push({ category: { $in: userPrefs } });
-
+    // Modified to show ALL users' posts (not just followed users)
     const baseVisibilityFilters = {
       isHidden: false,
       _id: { $nin: hiddenPosts }, // Exclude hidden posts
@@ -219,45 +225,25 @@ router.get('/feed', authenticateToken, async (req, res) => {
       ]
     };
 
-    const query = sourceFilters.length > 0
-      ? { $and: [ { $or: sourceFilters }, baseVisibilityFilters ] }
-      : baseVisibilityFilters; // if no sources, show recent visible posts
-
-    // Get regular posts only (WhisperWall posts are separate)
-    let posts = await Post.find(query)
+    // Get regular posts from ALL users (not filtered by following/preferences)
+    let posts = await Post.find(baseVisibilityFilters)
     .populate('author', 'username avatar')
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(parseInt(limit));
 
-    console.log('📥 Retrieved posts:', posts.length); // Debug log
+    console.log('📥 Retrieved posts from all users:', posts.length); // Debug log
 
-    // Fallback: if no matches for preferences/following, show recent visible posts
-    if (posts.length === 0 && (userPrefs.length > 0 || followingIds.length > 0)) {
-      posts = await Post.find(baseVisibilityFilters)
-        .populate('author', 'username avatar')
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(parseInt(limit));
-    }
-
-    // Calculate if user has reacted to each post and mark if outside preferences
+    // Calculate if user has reacted to each post
     const postsWithUserReactions = posts.map(post => {
       const userReaction = Object.keys(post.reactions).find(reactionType => 
         post.reactions[reactionType].some(r => r.user.equals(userId))
       );
       
-      // Check if post category is outside user's preferences
-      const isOutsidePreferences = post.category && 
-        userPrefs.length > 0 && 
-        !userPrefs.includes(post.category) &&
-        !post.author.equals(userId);
-      
       return {
         ...post.toObject(),
         userReaction: userReaction || null,
-        userHasReacted: !!userReaction,
-        isOutsidePreferences
+        userHasReacted: !!userReaction
       };
     });
 
